@@ -1,0 +1,7 @@
+imagebind_encoder_path: "/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/models/imagebind_huge.pth"
+reasoner_path: ""
+freeze_lm: True
+freeze_input_proj: False
+add_spetial_tokens: True
+
+max_length: 512
