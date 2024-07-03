@@ -1,3 +1,5 @@
+import torch
+
 from josie import JOSIE
 
 class Args():
@@ -52,3 +54,6 @@ output_tokens = model.generate(inputs)
 
 # Print the generated tokens
 print(output_tokens)
+
+
+torch.save(model.state_dict(), '/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/model/create_josie.py/first_working_creation.pth')
