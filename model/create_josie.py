@@ -20,8 +20,8 @@ model = JOSIE(Args())
 
 # Define inputs
 inputs = {
-    'image_paths': ['./path_to_image.jpg'],  # Path to your image file
-    'audio_paths': ['./path_to_audio.wav'],  # Path to your audio file
+    'image_paths': ['/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/.assets/bird_image.jpg'],  # Path to your image file
+    'audio_paths': ['/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/.assets/bird_audio.wav'],  # Path to your audio file
     'prompt': 'Describe the image and audio:',
     'max_tgt_len': 50,
     'top_p': 0.9,

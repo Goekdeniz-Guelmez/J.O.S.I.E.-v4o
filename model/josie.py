@@ -1,5 +1,5 @@
 # The main J.O.S.I.E.v4o model file. It's heavely barrowed from NeXT-GPT, big thanks.
-import os
+import os, re
 from typing import List
 
 from imagebind.models import imagebind_model
@@ -11,6 +11,7 @@ import torch.nn as nn
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
 
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 class StoppingCriteriaSub(StoppingCriteria):
 
@@ -54,8 +55,7 @@ class JOSIE(nn.Module):
         reasoner_path = os.path.join(self.args.reasoner_path)
         self.reasoner = AutoModelForCausalLM.from_pretrained(reasoner_path)
         self.tokenizer = AutoTokenizer.from_pretrained(reasoner_path)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.tokenizer.padding_side = "right"
+        self.bos_token_id = self.tokenizer .encode("<|im_start|>", add_special_tokens=False)[0]
         print(f"... tokenizer initialized.")
 
         if self.args.freeze_lm:
@@ -130,42 +130,42 @@ class JOSIE(nn.Module):
             self.args['gen_audio_token_idx'].append(gen_token_idx[0])
 
     def encode_video(self, video_paths):
-        inputs = {ModalityType.VISION: data.load_and_transform_video_data(video_paths, self.device)}
+        inputs = {ModalityType.VISION: data.load_and_transform_video_data(video_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
             embeddings = self.visual_encoder(inputs)
             video_embeds = embeddings[ModalityType.VISION]
         inputs_reasoner = self.input_projetor(video_embeds).unsqueeze(1)
-        atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(self.device)
+        atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
         return inputs_reasoner, atts_llama
 
     def encode_audio(self, audio_paths):
-        inputs = {ModalityType.AUDIO: data.load_and_transform_audio_data(audio_paths, self.device)}
+        inputs = {ModalityType.AUDIO: data.load_and_transform_audio_data(audio_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
             embeddings = self.visual_encoder(inputs)
             audio_embeds = embeddings[ModalityType.AUDIO]
         inputs_reasoner = self.input_projetor(audio_embeds).unsqueeze(1)
-        atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(self.device)
+        atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
         return inputs_reasoner, atts_llama
 
     def encode_image(self, image_paths):
-        inputs = {ModalityType.VISION: data.load_and_transform_vision_data(image_paths, self.device)}
+        inputs = {ModalityType.VISION: data.load_and_transform_vision_data(image_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
             embeddings = self.visual_encoder(inputs)
             image_embeds = embeddings['vision']
         inputs_reasoner = self.input_projetor(image_embeds).unsqueeze(1)
-        atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(self.device)
+        atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
         return inputs_reasoner, atts_llama
 
 
     def prompt_wrap_old(self, img_embeds, input_ids, target_ids, attention_mask):
-        input_ids = input_ids.to(self.device)
-        target_ids = target_ids.to(self.device)
-        attention_mask = attention_mask.to(self.device)
+        input_ids = input_ids.to(device)
+        target_ids = target_ids.to(device)
+        attention_mask = attention_mask.to(device)
         batch_size = input_ids.shape[0]
-        bos = torch.ones([batch_size, 1], dtype=input_ids.dtype, device=input_ids.device) * self.tokenizer.bos_token_id  # bsz x 1
+        bos = torch.ones([batch_size, 1], dtype=input_ids.dtype, device=input_ids.device) * self.bos_token_id
         if self.args['freeze_lm']:
             p_after_embeds = self.reasoner.model.embed_tokens(input_ids).expand(batch_size, -1, -1)
             bos_embeds = self.reasoner.model.embed_tokens(bos)
@@ -173,55 +173,53 @@ class JOSIE(nn.Module):
             p_after_embeds = self.reasoner.model.model.embed_tokens(input_ids).expand(batch_size, -1, -1)
             bos_embeds = self.reasoner.model.model.embed_tokens(bos)
         if img_embeds is not None:
-            p_before = "<|im_start|>main user 'Gökdeniz Gülemz'\n<|image_start|>"
-            p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(self.device)
+            p_before = "<|im_end|>\n<|im_start|>user\n<|image_start|>"
+            p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(device)
             if self.args['freeze_lm']:
                 p_before_embeds = self.reasoner.model.embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1, -1)
             else:
                 p_before_embeds = self.reasoner.model.model.embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1, -1)
-            inputs_embeds = torch.cat([bos_embeds, p_before_embeds, img_embeds, p_after_embeds], dim=1).to(self.device)
+            inputs_embeds = torch.cat([bos_embeds, p_before_embeds, img_embeds, p_after_embeds], dim=1).to(device)
 
             # create targets
-            empty_targets = (torch.ones([batch_size, 1 + p_before_embeds.size()[1] + 1], dtype=torch.long).to(self.device).fill_(-100))
-            targets = torch.cat([empty_targets, target_ids], dim=1).to(self.device)  # bsz x (1 + s1 + 1 + s2)
+            empty_targets = (torch.ones([batch_size, 1 + p_before_embeds.size()[1] + 1], dtype=torch.long).to(device).fill_(-100))
+            targets = torch.cat([empty_targets, target_ids], dim=1).to(device)
             assert inputs_embeds.size()[1] == targets.size()[1]
 
-            atts_prefix = torch.ones([batch_size, 1 + p_before_embeds.size()[1] + 1], dtype=torch.long).to(self.device)
-            attention_mask = torch.cat([atts_prefix, attention_mask], dim=1).to(self.device)
-            assert attention_mask.size() == targets.size()  # bsz x (1 + s1 + 1 + s2)
+            atts_prefix = torch.ones([batch_size, 1 + p_before_embeds.size()[1] + 1], dtype=torch.long).to(device)
+            attention_mask = torch.cat([atts_prefix, attention_mask], dim=1).to(device)
+            assert attention_mask.size() == targets.size()
         else:
-            p_before = "<|im_start|>main user 'Gökdeniz Gülemz'\n"
-            p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(self.device)
+            p_before = "<|im_end|>\n<|im_start|>user\n"
+            p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(device)
             if self.args['freeze_lm']:
                 p_before_embeds = self.reasoner.model.embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1, -1)
             else:
                 p_before_embeds = self.reasoner.model.model.embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1, -1)
-            inputs_embeds = torch.cat([bos_embeds, p_before_embeds, p_after_embeds], dim=1).to(self.device)
-
-            empty_targets = (torch.ones([batch_size, 1 + p_before_embeds.size()[1]], dtype=torch.long).to(self.device).fill_(-100))
-            targets = torch.cat([empty_targets, target_ids], dim=1).to(self.device)
+            inputs_embeds = torch.cat([bos_embeds, p_before_embeds, p_after_embeds], dim=1).to(device)
+            empty_targets = (torch.ones([batch_size, 1 + p_before_embeds.size()[1]], dtype=torch.long).to(device).fill_(-100))
+            targets = torch.cat([empty_targets, target_ids], dim=1).to(device)
             assert inputs_embeds.size()[1] == targets.size()[1]
-
-            atts_prefix = torch.ones([batch_size, 1 + p_before_embeds.size()[1]], dtype=torch.long).to(self.device)
-            attention_mask = torch.cat([atts_prefix, attention_mask], dim=1).to(self.device)
+            atts_prefix = torch.ones([batch_size, 1 + p_before_embeds.size()[1]], dtype=torch.long).to(device)
+            attention_mask = torch.cat([atts_prefix, attention_mask], dim=1).to(device)
             assert attention_mask.size() == targets.size()
         return inputs_embeds, targets, attention_mask
 
 
     def prompt_wrap_new(self, img_embeds, input_ids, target_ids, attention_mask):
-        input_ids = input_ids.to(self.device)
-        target_ids = target_ids.to(self.device)
-        attention_mask = attention_mask.to(self.device)
+        input_ids = input_ids.to(device)
+        target_ids = target_ids.to(device)
+        attention_mask = attention_mask.to(device)
         batch_size = input_ids.shape[0]
 
         # 1. Precompute common elements
-        bos = torch.full((batch_size, 1), self.tokenizer.bos_token_id, dtype=input_ids.dtype, device=self.device)
+        bos = torch.full((batch_size, 1), self.bos_token_id, dtype=input_ids.dtype, device=device)
         embed_fn = self.reasoner.model.embed_tokens if self.args['freeze_lm'] else self.reasoner.model.model.embed_tokens
 
         # 2. Use torch.cat for concatenation instead of multiple .expand() calls
         p_before = "<|im_start|>main user 'Gökdeniz Gülemz'\n"
         p_before += "<|image_start|>" if img_embeds is not None else ""
-        p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(self.device)
+        p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(device)
 
         # 3. Combine embeddings in a single operation
         embeds_list = [
@@ -234,10 +232,10 @@ class JOSIE(nn.Module):
 
         # 4. Simplify target and attention mask creation
         prefix_length = inputs_embeds.size(1) - input_ids.size(1)
-        empty_targets = torch.full((batch_size, prefix_length), -100, dtype=torch.long, device=self.device)
+        empty_targets = torch.full((batch_size, prefix_length), -100, dtype=torch.long, device=device)
         targets = torch.cat([empty_targets, target_ids], dim=1)
 
-        atts_prefix = torch.ones((batch_size, prefix_length), dtype=torch.long, device=self.device)
+        atts_prefix = torch.ones((batch_size, prefix_length), dtype=torch.long, device=device)
         attention_mask = torch.cat([atts_prefix, attention_mask], dim=1)
 
         return inputs_embeds, targets, attention_mask
@@ -260,7 +258,7 @@ class JOSIE(nn.Module):
             mm_embeds, _ = self.encode_audio(audio_paths)
         else:
             raise NotImplementedError
-        input_ids, target_ids, attention_mask = process_batch_stage_1(self.llama_tokenizer, inputs['output_texts'], self.max_length, self.args['prompt'])
+        input_ids, target_ids, attention_mask = process_batch_stage_1(self.tokenizer, inputs['output_texts'], self.max_length, self.args['prompt'])
         # print(input_ids)
         inputs_embeds, targets, attention_mask = self.prompt_wrap(mm_embeds, input_ids, target_ids, attention_mask)
         outputs = self.reasoner(
@@ -297,8 +295,8 @@ class JOSIE(nn.Module):
             elif st.startswith('<|video_start|>'):
                 input_embeds.append(self._prepare_video_embed(st, batch_size))
             else:
-                text_tokens = self.llama_tokenizer(st, add_special_tokens=False, return_tensors='pt').to(self.device)
-                bos = torch.ones([batch_size, 1], dtype=text_tokens.input_ids.dtype, device=text_tokens.input_ids.device) * self.llama_tokenizer.bos_token_id
+                text_tokens = self.tokenizer(st, add_special_tokens=False, return_tensors='pt').to(device)
+                bos = torch.ones([batch_size, 1], dtype=text_tokens.input_ids.dtype, device=text_tokens.input_ids.device) * self.bos_token_id
                 if self.args.freeze_lm:
                     text_embeds = self.reasoner.model.embed_tokens(text_tokens.input_ids).expand(batch_size, -1, -1)
                     bos_embeds = self.reasoner.model.embed_tokens(bos)
@@ -312,14 +310,11 @@ class JOSIE(nn.Module):
     
     def generate_tokens_embeddings(self, inputs, input_embeds, temperature: float = 0.0, top_p: float = 1.0):
         """
-        This function is used to generate the tokens and output embeddings that employed to generate
+        This function is used to generate the tokens
         inputs: dict
         input_embeds: tensor
         return:
             out: the output tokens index
-            output_embeddings: output embeddings for synthesizing images
-            video_output_embedding: output embeddings for synthesizing video
-            audio_output_embedding: output embeddings for synthesizing audio
         """
         stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=inputs['stops_id'], encounters=1)])
 
@@ -337,22 +332,7 @@ class JOSIE(nn.Module):
             output_attentions=True
         )
 
-        output_embeddings = []
-        video_output_embedding = []
-        audio_output_embedding = []
-        out = outputs.sequences
-        for _hidden_states in outputs.hidden_states[1:]:
-            for idx in self.args.text_emb_to_img_layers:
-                output_embeddings.append(_hidden_states[idx])
-            for idx in self.args.text_emb_to_video_layers:
-                video_output_embedding.append(_hidden_states[idx])
-            for idx in self.args.text_emb_to_audio_layers:
-                audio_output_embedding.append(_hidden_states[idx])
-        output_embeddings = torch.cat(output_embeddings, dim=1)
-        video_output_embedding = torch.cat(video_output_embedding, dim=1)
-        audio_output_embedding = torch.cat(audio_output_embedding, dim=1)
-
-        return out, output_embeddings, video_output_embedding, audio_output_embedding
+        return outputs.sequences
 
     def generate(self, inputs):
         """
@@ -391,27 +371,17 @@ class JOSIE(nn.Module):
             'audio_length_in_s': the seconds for generated audio length
         }
         """
-        # init output with image tokens
 
         input_embeds = self.prepare_generation_embedding(inputs)
-        generated_ids, generated_image_embeddings, generated_video_embeddings, generated_audio_embeddings = self.generate_tokens_embeddings(inputs, input_embeds)
+        print("Generaded and Prepared the inputs:")
+        print(input_embeds)
 
-        return_outputs = []
-
-        # Find up to max_num_rets [IMG] tokens, and their corresponding scores.
-        all_gen_img_idx = [i for i, x in enumerate(generated_ids[0, :] == self.args['gen_img_token_idx'][0]) if x][:inputs['max_num_imgs']]
-        print('all_gen_img_idx: ', all_gen_img_idx)
-
-        # Find up to max_num_rest [VID] tokens, and their corresponding scores.
-        all_gen_vid_idx = [i for i, x in enumerate(generated_ids[0, :] == self.args['gen_video_token_idx'][0]) if x][:inputs['max_num_vids']]
-        print('all_gen_vid_idx: ', all_gen_vid_idx)
-
-        # Find up to max_num_rest [AUD] tokens, and their corresponding scores.
-        all_gen_aud_idx = [i for i, x in enumerate(generated_ids[0, :] == self.args['gen_audio_token_idx'][0]) if x][:inputs['max_num_auds']]
-        print('all_gen_aud_idx: ', all_gen_aud_idx)
+        generated_ids = self.generate_tokens_embeddings(inputs, input_embeds)
+        print("Generates IDs from the Reasoner:")
+        print(generated_ids)
 
         # Only generate tokens without calling image/video/audio generation methods
-        caption = self.llama_tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-        return_outputs.append(caption)
+        output = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        print("Tokenized the Outputs")
+        return output
 
-        return return_outputs
