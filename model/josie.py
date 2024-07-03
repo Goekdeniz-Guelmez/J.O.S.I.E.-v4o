@@ -135,7 +135,7 @@ class JOSIE(nn.Module):
         inputs = {ModalityType.VISION: data.load_and_transform_video_data(video_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
-            embeddings = self.visual_encoder(inputs)
+            embeddings = self.imagebind_encoder(inputs)
             video_embeds = embeddings[ModalityType.VISION]
         inputs_reasoner = self.input_projetor(video_embeds).unsqueeze(1)
         atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
@@ -146,7 +146,7 @@ class JOSIE(nn.Module):
         inputs = {ModalityType.AUDIO: data.load_and_transform_audio_data(audio_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
-            embeddings = self.visual_encoder(inputs)
+            embeddings = self.imagebind_encoder(inputs)
             audio_embeds = embeddings[ModalityType.AUDIO]
         inputs_reasoner = self.input_projetor(audio_embeds).unsqueeze(1)
         atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
@@ -157,7 +157,7 @@ class JOSIE(nn.Module):
         inputs = {ModalityType.VISION: data.load_and_transform_vision_data(image_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
-            embeddings = self.visual_encoder(inputs)
+            embeddings = self.imagebind_encoder(inputs)
             image_embeds = embeddings[ModalityType.VISION]
         inputs_reasoner = self.input_projetor(image_embeds).unsqueeze(1)
         atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
