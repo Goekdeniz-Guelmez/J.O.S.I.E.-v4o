@@ -485,8 +485,6 @@ class JOSIE(nn.Module):
                 print("recieved Imu")
                 input_embeds.append(self._prepare_imu_embed(inputs, batch_size))
             else:
-                print(input_embeds)
-                input()
                 text_tokens = self.tokenizer(st, add_special_tokens=False, return_tensors='pt').to(device)
                 bos = torch.ones([batch_size, 1], dtype=text_tokens.input_ids.dtype, device=text_tokens.input_ids.device) * self.bos_token_id
                 text_embeds = self.reasoner.model.embed_tokens(text_tokens.input_ids).expand(batch_size, -1, -1)
