@@ -361,7 +361,6 @@ class JOSIE(nn.Module):
 
         split_text = re.split(r'(<\|image_start\|>|<\|audio_start\|>|<\|video_start\|>)', text)
         for st in split_text:
-            print(split_text)
             if st.startswith('<|image_start|>'):
                 print("recieved image")
                 input_embeds.append(self._prepare_image_embed(inputs, batch_size))
@@ -372,6 +371,7 @@ class JOSIE(nn.Module):
                 print("recieved video")
                 input_embeds.append(self._prepare_video_embed(inputs, batch_size))
             else:
+                print(input_embeds)
                 input()
                 text_tokens = self.tokenizer(st, add_special_tokens=False, return_tensors='pt').to(device)
                 bos = torch.ones([batch_size, 1], dtype=text_tokens.input_ids.dtype, device=text_tokens.input_ids.device) * self.bos_token_id
