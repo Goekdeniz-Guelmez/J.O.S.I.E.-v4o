@@ -2,8 +2,9 @@
 import os
 from typing import List
 
-from ImageBind.imagebind import *
-from ImageBind.imagebind import data
+from imagebind.models import imagebind_model
+from imagebind.models.imagebind_model import ModalityType
+from imagebind import data
 
 import torch
 import torch.nn as nn
@@ -15,14 +16,13 @@ class JOSIE(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        self.max_length = args["max_length"]
-        self.stage = args["stage"]
+        self.max_length = args.max_length
+        self.stage = args.stage
 
         ##### ENCODER STUFF
         print(f"Initializing ImageBind encoder ...")
         # imagebind_encoder_path = os.path.join(self.args["imagebind_encoder_path"])
         self.imagebind_encoder, self.imagebind_encoder_output_dim = imagebind_model.imagebind_huge(pretrained=True) #, store_path=imagebind_encoder_path)
-
         for name, param in self.imagebind_encoder.named_parameters():
             param.requires_grad = False
         self.imagebind_encoder.eval()
@@ -31,14 +31,14 @@ class JOSIE(nn.Module):
 
         ##### REASONER STUFF
         print(f"Initializing Reasoner LLM model and tokenizer ...")
-        reasoner_path = os.path.join(self.args['reasoner_path'])
+        reasoner_path = os.path.join(self.args.reasoner_path)
         self.reasoner = AutoModelForCausalLM.from_pretrained(reasoner_path)
         self.tokenizer = AutoTokenizer.from_pretrained(reasoner_path)
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.padding_side = "right"
         print(f"... tokenizer initialized.")
 
-        if self.args.get('freeze_lm'):
+        if self.args.freeze_lm:
             print("Freezing the Reasoner ...")
             for param in self.reasoner.parameters():
                 param.requires_grad = False
@@ -50,7 +50,7 @@ class JOSIE(nn.Module):
 
 
         ##### TOKENIZER SETTING STUFF
-        if self.args.get('add_spetial_tokens'):
+        if self.args.get.add_spetial_tokens:
             print("Adding Spetial Tokens to vocabulary ...")
             self._add_image_token()
             self._add_video_token()
@@ -62,7 +62,7 @@ class JOSIE(nn.Module):
         ##### INPUUT PROJECTOR STUFF
         print("Initializing input ImageBind Projection ...")
         self.input_projetor = nn.Linear(self.imagebind_encoder_output_dim, self.reasoner.config.hidden_size)
-        if self.args.get('freeze_input_proj'):
+        if self.args.get.freeze_input_proj:
             for param in self.input_projetor.parameters():
                 param.requires_grad = False
 
