@@ -320,9 +320,9 @@ class JOSIE(nn.Module):
 
         outputs = self.reasoner.generate(
             inputs_embeds=input_embeds,
-            max_new_tokens=20,
-            top_p=0-4,
-            temperature=0.7,
+            max_new_tokens=inputs['max_tgt_len'],
+            top_p=inputs['top_p'],
+            temperature=inputs['temperature'],
             # repeat_pen,
             do_sample=True,
             use_cache=True,
