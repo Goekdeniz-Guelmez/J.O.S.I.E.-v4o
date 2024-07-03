@@ -467,10 +467,8 @@ class JOSIE(nn.Module):
         split_text = re.split(r'(<\|image_start\|>|<\|audio_start\|>|<\|video_start\|>)', text)
         for st in split_text:
             if st.startswith('<|image_start|>'):
-                print("recieved image")
                 input_embeds.append(self._prepare_image_embed(inputs, batch_size))
             elif st.startswith('<|audio_start|>'):
-                print("recieved audio")
                 input_embeds.append(self._prepare_audio_embed(inputs, batch_size))
             elif st.startswith('<|video_start|>'):
                 print("recieved video")
