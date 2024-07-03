@@ -8,6 +8,8 @@ class Args():
     add_spetial_tokens = True
     max_length = 512
 
+    stage = 1
+
 model = JOSIE(Args())
 
 print(model)
