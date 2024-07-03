@@ -130,6 +130,18 @@ class JOSIE(nn.Module):
         #     assert len(gen_token_idx) == 1, gen_token_idx
         #     self.args['gen_audio_token_idx'].append(gen_token_idx[0])
 
+    def _add_thermal_token(self): # TODO Continue
+        self.tokenizer.add_tokens(["<|thermal_start|>"])
+        self.tokenizer.add_tokens(["<|thermal_end|>"])
+
+    def _add_depth_token(self): # TODO Continue
+        self.tokenizer.add_tokens(["<|depth_start|>"])
+        self.tokenizer.add_tokens(["<|depth_end|>"])
+
+    def _add_imu_token(self): # TODO Continue
+        self.tokenizer.add_tokens(["<|imu_start|>"])
+        self.tokenizer.add_tokens(["<|imu_end|>"])
+
     def encode_video(self, video_paths):
         print("Encoding Video")
         inputs = {ModalityType.VISION: data.load_and_transform_video_data(video_paths, device)}
