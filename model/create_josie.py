@@ -17,6 +17,9 @@ model = JOSIE(Args())
 
 # print(model)
 
+# with open("/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/model_architecture.txt", "w") as file:
+#     file.write(str(model))
+
 
 # Define inputs
 inputs = {
@@ -26,7 +29,7 @@ inputs = {
     'max_tgt_len': 50,
     'top_p': 0.9,
     'temperature': 0.7,
-    'stops_id': [[835], [2277, 29937]],  # Adjust this if necessary
+    'stops_id': [[151645]],  # Adjust this if necessary
     'ENCOUNTERS': 1,
     'max_num_imgs': 1,
     'max_num_vids': 0,

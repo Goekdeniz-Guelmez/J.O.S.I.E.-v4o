@@ -84,6 +84,7 @@ class JOSIE(nn.Module):
         if self.args.freeze_input_proj:
             for param in self.input_projetor.parameters():
                 param.requires_grad = False
+        print("...  Input ImageBind Projection initialized")
 
         # self.output_projetor = nn.Linear(self.reasoner.config.hidden_size, audio_model_input_dim)
 
@@ -91,45 +92,46 @@ class JOSIE(nn.Module):
         self.tokenizer.add_tokens(["<|image_start|>"])
         self.tokenizer.add_tokens(["<|image_end|>"])
 
-        self.args['gen_img_token_idx'] = []
-        for i in range(self.args['num_gen_img_tokens']):
-            print(f'Adding <|image_{i}|> token to vocabulary.')
-            print(f'Before adding new token, tokenizer("<|image_{i}|>") =', self.tokenizer(f'<|image_{i}|>', add_special_tokens=False))
-            num_added_tokens = self.tokenizer.add_tokens(f'<|image_{i}|>')
-            print(f'After adding {num_added_tokens} new tokens, tokenizer("<|image_{i}|>") =', self.tokenizer(f'<|image_{i}|>', add_special_tokens=False))
-            gen_token_idx = self.tokenizer(f'<|image_{i}|>', add_special_tokens=False).input_ids
-            assert len(gen_token_idx) == 1, gen_token_idx
-            self.args['gen_img_token_idx'].append(gen_token_idx[0])
+        # self.args['gen_img_token_idx'] = []
+        # for i in range(self.args['num_gen_img_tokens']):
+        #     print(f'Adding <|image_{i}|> token to vocabulary.')
+        #     print(f'Before adding new token, tokenizer("<|image_{i}|>") =', self.tokenizer(f'<|image_{i}|>', add_special_tokens=False))
+        #     num_added_tokens = self.tokenizer.add_tokens(f'<|image_{i}|>')
+        #     print(f'After adding {num_added_tokens} new tokens, tokenizer("<|image_{i}|>") =', self.tokenizer(f'<|image_{i}|>', add_special_tokens=False))
+        #     gen_token_idx = self.tokenizer(f'<|image_{i}|>', add_special_tokens=False).input_ids
+        #     assert len(gen_token_idx) == 1, gen_token_idx
+        #     self.args['gen_img_token_idx'].append(gen_token_idx[0])
 
     def _add_video_token(self):
-    # self.tokenizer.add_tokens({"<|video_start|>"})
-    # self.tokenizer.add_tokens({"<|video_end|>"})
+        self.tokenizer.add_tokens(["<|video_start|>"])
+        self.tokenizer.add_tokens(["<|video_end|>"])
 
-        self.args['gen_video_token_idx'] = []
-        for i in range(self.args['num_gen_video_tokens']):
-            print(f'Adding <|video_{i}|> token to vocabulary.')
-            print(f'Before adding new token, tokenizer("<|video_{i}|>") =', self.tokenizer(f'<|video_{i}|>', add_special_tokens=False))
-            num_added_tokens = self.tokenizer.add_tokens(f'<|video_{i}|>')
-            print(f'After adding {num_added_tokens} new tokens, tokenizer("<|video_{i}|>") =', self.tokenizer(f'<|video_{i}|>', add_special_tokens=False))
-            gen_token_idx = self.tokenizer(f'<|video_{i}|>', add_special_tokens=False).input_ids
-            assert len(gen_token_idx) == 1, gen_token_idx
-            self.args['gen_video_token_idx'].append(gen_token_idx[0])
+        # self.args['gen_video_token_idx'] = []
+        # for i in range(self.args['num_gen_video_tokens']):
+        #     print(f'Adding <|video_{i}|> token to vocabulary.')
+        #     print(f'Before adding new token, tokenizer("<|video_{i}|>") =', self.tokenizer(f'<|video_{i}|>', add_special_tokens=False))
+        #     num_added_tokens = self.tokenizer.add_tokens(f'<|video_{i}|>')
+        #     print(f'After adding {num_added_tokens} new tokens, tokenizer("<|video_{i}|>") =', self.tokenizer(f'<|video_{i}|>', add_special_tokens=False))
+        #     gen_token_idx = self.tokenizer(f'<|video_{i}|>', add_special_tokens=False).input_ids
+        #     assert len(gen_token_idx) == 1, gen_token_idx
+        #     self.args['gen_video_token_idx'].append(gen_token_idx[0])
 
     def _add_audio_token(self):
-        # self.tokenizer.add_tokens({"<|audio_start|>"})
-        # self.tokenizer.add_tokens({"<|audio_end|>"})
+        self.tokenizer.add_tokens(["<|audio_start|>"])
+        self.tokenizer.add_tokens(["<|audio_end|>"])
 
-        self.args['gen_audio_token_idx'] = []
-        for i in range(self.args['num_gen_audio_tokens']):
-            print(f'Adding <|audio_{i}|> token to vocabulary.')
-            print(f'Before adding new token, tokenizer("<|audio_{i}|>") =', self.tokenizer(f'<|audio_{i}|>', add_special_tokens=False))
-            num_added_tokens = self.tokenizer.add_tokens(f'<|audio_{i}|>')
-            print(f'After adding {num_added_tokens} new tokens, tokenizer("<|audio_{i}|>") =', self.tokenizer(f'<|audio_{i}|>', add_special_tokens=False))
-            gen_token_idx = self.tokenizer(f'<|audio_{i}|>', add_special_tokens=False).input_ids
-            assert len(gen_token_idx) == 1, gen_token_idx
-            self.args['gen_audio_token_idx'].append(gen_token_idx[0])
+        # self.args['gen_audio_token_idx'] = []
+        # for i in range(self.args['num_gen_audio_tokens']):
+        #     print(f'Adding <|audio_{i}|> token to vocabulary.')
+        #     print(f'Before adding new token, tokenizer("<|audio_{i}|>") =', self.tokenizer(f'<|audio_{i}|>', add_special_tokens=False))
+        #     num_added_tokens = self.tokenizer.add_tokens(f'<|audio_{i}|>')
+        #     print(f'After adding {num_added_tokens} new tokens, tokenizer("<|audio_{i}|>") =', self.tokenizer(f'<|audio_{i}|>', add_special_tokens=False))
+        #     gen_token_idx = self.tokenizer(f'<|audio_{i}|>', add_special_tokens=False).input_ids
+        #     assert len(gen_token_idx) == 1, gen_token_idx
+        #     self.args['gen_audio_token_idx'].append(gen_token_idx[0])
 
     def encode_video(self, video_paths):
+        print("Encoding Video")
         inputs = {ModalityType.VISION: data.load_and_transform_video_data(video_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
@@ -140,6 +142,7 @@ class JOSIE(nn.Module):
         return inputs_reasoner, atts_llama
 
     def encode_audio(self, audio_paths):
+        print("Encoding Audio")
         inputs = {ModalityType.AUDIO: data.load_and_transform_audio_data(audio_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
@@ -150,11 +153,12 @@ class JOSIE(nn.Module):
         return inputs_reasoner, atts_llama
 
     def encode_image(self, image_paths):
+        print("Encoding Image")
         inputs = {ModalityType.VISION: data.load_and_transform_vision_data(image_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
             embeddings = self.visual_encoder(inputs)
-            image_embeds = embeddings['vision']
+            image_embeds = embeddings[ModalityType.VISION]
         inputs_reasoner = self.input_projetor(image_embeds).unsqueeze(1)
         atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
         return inputs_reasoner, atts_llama
@@ -173,6 +177,7 @@ class JOSIE(nn.Module):
             p_after_embeds = self.reasoner.model.model.embed_tokens(input_ids).expand(batch_size, -1, -1)
             bos_embeds = self.reasoner.model.model.embed_tokens(bos)
         if img_embeds is not None:
+            print("Recieved Image")
             p_before = "<|im_end|>\n<|im_start|>user\n<|image_start|>"
             p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(device)
             if self.args['freeze_lm']:
@@ -217,7 +222,7 @@ class JOSIE(nn.Module):
         embed_fn = self.reasoner.model.embed_tokens if self.args['freeze_lm'] else self.reasoner.model.model.embed_tokens
 
         # 2. Use torch.cat for concatenation instead of multiple .expand() calls
-        p_before = "<|im_start|>main user 'Gökdeniz Gülemz'\n"
+        p_before = "<|im_end|>\n<|im_start|>user\n"
         p_before += "<|image_start|>" if img_embeds is not None else ""
         p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(device)
 
@@ -280,29 +285,98 @@ class JOSIE(nn.Module):
         return loss, gen_acc
     
 
+    def _prepare_image_embed(self, inputs, batch_size):
+        features = []
+        p_before_token = self.tokenizer('<|image_start|>', add_special_tokens=False, return_tensors='pt').to(device)
+        p_after_token = self.tokenizer('<|image_end|>', add_special_tokens=False, return_tensors='pt').to(device)
+        
+        p_before_embeds = self.reasoner.model.embed_tokens(p_before_token.input_ids).expand(batch_size, -1, -1)
+        p_after_embeds = self.reasoner.model.embed_tokens(p_after_token.input_ids).expand(batch_size, -1, -1)
+
+        _temp_embedding, _ = self.encode_image(inputs['image_paths'])
+        features.append(_temp_embedding)
+
+        feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
+        return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
+
+    def _prepare_video_embed(self, inputs, batch_size):
+        features = []
+        p_before_token = self.tokenizer('<|video_start|>', add_special_tokens=False, return_tensors='pt').to(device)
+        p_after_token = self.tokenizer('<|video_end|>', add_special_tokens=False, return_tensors='pt').to(device)
+
+        p_before_embeds = self.reasoner.model.embed_tokens(p_before_token.input_ids).expand(batch_size, -1, -1)
+        p_after_embeds = self.reasoner.model.embed_tokens(p_after_token.input_ids).expand(batch_size, -1, -1)
+
+        _temp_embedding, _ = self.encode_video(inputs['video_paths'])
+        features.append(_temp_embedding)
+
+        feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
+        return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
+
+    def _prepare_audio_embed(self, inputs, batch_size):
+        features = []
+        p_before_token = self.tokenizer('<|audio_start|>', add_special_tokens=False, return_tensors='pt').to(device)
+        p_after_token = self.tokenizer('<|audio_end|>', add_special_tokens=False, return_tensors='pt').to(device)
+
+        p_before_embeds = self.reasoner.model.embed_tokens(p_before_token.input_ids).expand(batch_size, -1, -1)
+        p_after_embeds = self.reasoner.model.embed_tokens(p_after_token.input_ids).expand(batch_size, -1, -1)
+
+        _temp_embedding, _ = self.encode_audio(inputs['audio_paths'])
+        features.append(_temp_embedding)
+
+        feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
+        return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
+    
+
+    # def extract_multimodal_feature(self, inputs):
+    #     features = []
+    #     if inputs['image_paths']:
+    #         image_embeds, _ = self.encode_image(inputs['image_paths'])
+    #         features.append(image_embeds)
+    #     if inputs['audio_paths']:
+    #         audio_embeds, _ = self.encode_audio(inputs['audio_paths'])
+    #         features.append(audio_embeds)
+    #     if inputs['video_paths']:
+    #         video_embeds, _ = self.encode_video(inputs['video_paths'])
+    #         features.append(video_embeds)
+
+    #     feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
+    #     return feature_embeds
+
     def prepare_generation_embedding(self, inputs):
         prompt = inputs['prompt']
-        text = prompt + '<|im_end|>\n<|im_start|>assistant\n'
+        text = f"<|im_start|>system\nYou are a assistant<|im_end|>\n<|im_start|>user\n{prompt}"
         print("text prompt: ", text)
+        input()
         batch_size = 1
         input_embeds = []
-        split_text = re.split(r' <|> ', text)
+        if 'image_paths' in inputs:
+            text += ' <|image_start|> '
+        if 'audio_paths' in inputs:
+            text += ' <|audio_start|> '
+        if 'video_paths' in inputs:
+            text += ' <|video_start|> '
+        print(text)
+        input()
+
+        split_text = re.split(r'(<\|image_start\|>|<\|audio_start\|>|<\|video_start\|>)', text)
         for st in split_text:
+            print(split_text)
             if st.startswith('<|image_start|>'):
-                input_embeds.append(self._prepare_image_embed(st, batch_size))
+                print("recieved image")
+                input_embeds.append(self._prepare_image_embed(inputs, batch_size))
             elif st.startswith('<|audio_start|>'):
-                input_embeds.append(self._prepare_audio_embed(st, batch_size))
+                print("recieved audio")
+                input_embeds.append(self._prepare_audio_embed(inputs, batch_size))
             elif st.startswith('<|video_start|>'):
-                input_embeds.append(self._prepare_video_embed(st, batch_size))
+                print("recieved video")
+                input_embeds.append(self._prepare_video_embed(inputs, batch_size))
             else:
+                input()
                 text_tokens = self.tokenizer(st, add_special_tokens=False, return_tensors='pt').to(device)
                 bos = torch.ones([batch_size, 1], dtype=text_tokens.input_ids.dtype, device=text_tokens.input_ids.device) * self.bos_token_id
-                if self.args.freeze_lm:
-                    text_embeds = self.reasoner.model.embed_tokens(text_tokens.input_ids).expand(batch_size, -1, -1)
-                    bos_embeds = self.reasoner.model.embed_tokens(bos)
-                else:
-                    text_embeds = self.reasoner.model.model.embed_tokens(text_tokens.input_ids).expand(batch_size, -1, -1)
-                    bos_embeds = self.reasoner.model.model.embed_tokens(bos)
+                text_embeds = self.reasoner.model.embed_tokens(text_tokens.input_ids).expand(batch_size, -1, -1)
+                bos_embeds = self.reasoner.model.embed_tokens(bos)
                 input_embeds.append(bos_embeds)
                 input_embeds.append(text_embeds)
         inputs_embeds = torch.cat(input_embeds, dim=1)
@@ -380,7 +454,6 @@ class JOSIE(nn.Module):
         print("Generates IDs from the Reasoner:")
         print(generated_ids)
 
-        # Only generate tokens without calling image/video/audio generation methods
         output = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
         print("Tokenized the Outputs")
         return output
