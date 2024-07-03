@@ -1,0 +1,9 @@
+This is only a test model using Qwen2 0.5B for easy and fast loading and training.
+
+inputs
+
+ImgeBind
+
+Input projections
+
+Qwen2 0.5B

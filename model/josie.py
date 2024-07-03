@@ -9,8 +9,28 @@ from imagebind import data
 import torch
 import torch.nn as nn
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
 
+
+class StoppingCriteriaSub(StoppingCriteria):
+
+    def __init__(self, stops: List = None, encounters: int = 1):
+        super().__init__()
+        self.stops = stops
+        self.ENCOUNTERS = encounters
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor):
+        stop_count = 0
+        for stop in self.stops:
+            _stop = torch.tensor(stop).to(input_ids[0].device)
+            indices = torch.where(_stop[0] == input_ids)
+            for i in indices:
+                if len(i) > 0:
+                    if torch.all(input_ids[0][i:i + len(_stop)] == _stop):
+                        stop_count += 1
+        if stop_count >= self.ENCOUNTERS:
+            return True
+        return False
 
 class JOSIE(nn.Module):
     def __init__(self, args):
@@ -45,12 +65,11 @@ class JOSIE(nn.Module):
             self.reasoner.eval()
         else:
             print("Instruct tuning the Reasoner ...") # TODO implement the LoraConfig stuff
-        self.reasoner.print_trainable_parameters()
         print(f"... Reasoner LLM model initialized.")
 
 
         ##### TOKENIZER SETTING STUFF
-        if self.args.get.add_spetial_tokens:
+        if self.args.add_spetial_tokens:
             print("Adding Spetial Tokens to vocabulary ...")
             self._add_image_token()
             self._add_video_token()
@@ -62,7 +81,7 @@ class JOSIE(nn.Module):
         ##### INPUUT PROJECTOR STUFF
         print("Initializing input ImageBind Projection ...")
         self.input_projetor = nn.Linear(self.imagebind_encoder_output_dim, self.reasoner.config.hidden_size)
-        if self.args.get.freeze_input_proj:
+        if self.args.freeze_input_proj:
             for param in self.input_projetor.parameters():
                 param.requires_grad = False
 
@@ -261,3 +280,138 @@ class JOSIE(nn.Module):
         valid_tokens = gen_acc & valid_mask  # [B*S]
         gen_acc = valid_tokens.sum().item() / (valid_mask.sum().item() + 1.0)
         return loss, gen_acc
+    
+
+    def prepare_generation_embedding(self, inputs):
+        prompt = inputs['prompt']
+        text = prompt + '<|im_end|>\n<|im_start|>assistant\n'
+        print("text prompt: ", text)
+        batch_size = 1
+        input_embeds = []
+        split_text = re.split(r' <|> ', text)
+        for st in split_text:
+            if st.startswith('<|image_start|>'):
+                input_embeds.append(self._prepare_image_embed(st, batch_size))
+            elif st.startswith('<|audio_start|>'):
+                input_embeds.append(self._prepare_audio_embed(st, batch_size))
+            elif st.startswith('<|video_start|>'):
+                input_embeds.append(self._prepare_video_embed(st, batch_size))
+            else:
+                text_tokens = self.llama_tokenizer(st, add_special_tokens=False, return_tensors='pt').to(self.device)
+                bos = torch.ones([batch_size, 1], dtype=text_tokens.input_ids.dtype, device=text_tokens.input_ids.device) * self.llama_tokenizer.bos_token_id
+                if self.args.freeze_lm:
+                    text_embeds = self.reasoner.model.embed_tokens(text_tokens.input_ids).expand(batch_size, -1, -1)
+                    bos_embeds = self.reasoner.model.embed_tokens(bos)
+                else:
+                    text_embeds = self.reasoner.model.model.embed_tokens(text_tokens.input_ids).expand(batch_size, -1, -1)
+                    bos_embeds = self.reasoner.model.model.embed_tokens(bos)
+                input_embeds.append(bos_embeds)
+                input_embeds.append(text_embeds)
+        inputs_embeds = torch.cat(input_embeds, dim=1)
+        return inputs_embeds
+    
+    def generate_tokens_embeddings(self, inputs, input_embeds, temperature: float = 0.0, top_p: float = 1.0):
+        """
+        This function is used to generate the tokens and output embeddings that employed to generate
+        inputs: dict
+        input_embeds: tensor
+        return:
+            out: the output tokens index
+            output_embeddings: output embeddings for synthesizing images
+            video_output_embedding: output embeddings for synthesizing video
+            audio_output_embedding: output embeddings for synthesizing audio
+        """
+        stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=inputs['stops_id'], encounters=1)])
+
+        outputs = self.reasoner.generate(
+            inputs_embeds=input_embeds,
+            max_new_tokens=20,
+            top_p=0-4,
+            temperature=0.7,
+            # repeat_pen,
+            do_sample=True,
+            use_cache=True,
+            stopping_criteria=stopping_criteria,
+            output_hidden_states=True,
+            return_dict_in_generate=True,
+            output_attentions=True
+        )
+
+        output_embeddings = []
+        video_output_embedding = []
+        audio_output_embedding = []
+        out = outputs.sequences
+        for _hidden_states in outputs.hidden_states[1:]:
+            for idx in self.args.text_emb_to_img_layers:
+                output_embeddings.append(_hidden_states[idx])
+            for idx in self.args.text_emb_to_video_layers:
+                video_output_embedding.append(_hidden_states[idx])
+            for idx in self.args.text_emb_to_audio_layers:
+                audio_output_embedding.append(_hidden_states[idx])
+        output_embeddings = torch.cat(output_embeddings, dim=1)
+        video_output_embedding = torch.cat(video_output_embedding, dim=1)
+        audio_output_embedding = torch.cat(audio_output_embedding, dim=1)
+
+        return out, output_embeddings, video_output_embedding, audio_output_embedding
+
+    def generate(self, inputs):
+        """
+        inputs = {
+            'image_paths': optional,
+            'audio_paths': optional,
+            'video_paths': optional,
+            'thermal_paths': optional,
+            'mode': generation mode,
+            'prompt': human input prompt,
+            'max_tgt_len': generation length,
+            'top_p': top_p,
+            'temperature': temperature,
+            'modality_embeds': None or torch.tensor,
+            'modality_cache': save the image cache,
+            'filter_value': Value to assign to tokens that should never be generated,
+            'min_word_tokens': Minimum number of words to generate before allowing a [IMG] output,
+            'gen_scale_factor': float = 1.0,
+            'stops_id': the default value is [[835], [2277, 29937]] the stop token is '###', which has two types of tokenization ways, [835] and [2277, 29937],
+            'ENCOUNTERS': the times that the generated sentence will be ended,
+            'load_sd': whether use SD for image generation,
+            'max_num_imgs': Maximum number of images to return in one generation pass,
+            'guidance_scale_for_img': the guidance ratio of conditioner, if it is None, the default value will be applied in SD,
+            'num_inference_steps_for_img': the number of inference step for image generation in the stable diffusion model,
+            'load_vd': whether use VD for video generation,
+            'max_num_vids': Maximum number of videos to return in one generation pass,
+            'guidance_scale_for_vid': the guidance ratio of conditioner, if it is None, the default value will be applied in VD,
+            'num_inference_steps_for_vid': the number of inference step for video generation in the stable diffusion model,
+            'height': (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor),
+            'width': (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor),
+            'num_frames': (`int`, *optional*, defaults to 16),
+            'load_ad': whether use AD for audio generation,
+            'max_num_auds': Maximum number of audios to return in one generation pass,
+            'guidance_scale_for_aud': the guidance ratio of conditioner, if it is None, the default value will be applied in AD,
+            'num_inference_steps_for_aud': the number of inference step for audio generation in the stable diffusion model,
+            'audio_length_in_s': the seconds for generated audio length
+        }
+        """
+        # init output with image tokens
+
+        input_embeds = self.prepare_generation_embedding(inputs)
+        generated_ids, generated_image_embeddings, generated_video_embeddings, generated_audio_embeddings = self.generate_tokens_embeddings(inputs, input_embeds)
+
+        return_outputs = []
+
+        # Find up to max_num_rets [IMG] tokens, and their corresponding scores.
+        all_gen_img_idx = [i for i, x in enumerate(generated_ids[0, :] == self.args['gen_img_token_idx'][0]) if x][:inputs['max_num_imgs']]
+        print('all_gen_img_idx: ', all_gen_img_idx)
+
+        # Find up to max_num_rest [VID] tokens, and their corresponding scores.
+        all_gen_vid_idx = [i for i, x in enumerate(generated_ids[0, :] == self.args['gen_video_token_idx'][0]) if x][:inputs['max_num_vids']]
+        print('all_gen_vid_idx: ', all_gen_vid_idx)
+
+        # Find up to max_num_rest [AUD] tokens, and their corresponding scores.
+        all_gen_aud_idx = [i for i, x in enumerate(generated_ids[0, :] == self.args['gen_audio_token_idx'][0]) if x][:inputs['max_num_auds']]
+        print('all_gen_aud_idx: ', all_gen_aud_idx)
+
+        # Only generate tokens without calling image/video/audio generation methods
+        caption = self.llama_tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        return_outputs.append(caption)
+
+        return return_outputs
