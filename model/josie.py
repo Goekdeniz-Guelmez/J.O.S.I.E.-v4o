@@ -55,7 +55,7 @@ class JOSIE(nn.Module):
         reasoner_path = os.path.join(self.args.reasoner_path)
         self.reasoner = AutoModelForCausalLM.from_pretrained(reasoner_path)
         self.tokenizer = AutoTokenizer.from_pretrained(reasoner_path)
-        self.bos_token_id = self.tokenizer .encode("<|im_start|>", add_special_tokens=False)[0]
+        self.bos_token_id = self.tokenizer.encode("<|im_start|>", add_special_tokens=False)[0] # Manual Implementaiton beacause Qwen2 has it not set in the Tokenizer config
         print(f"... tokenizer initialized.")
 
         if self.args.freeze_lm:
@@ -74,6 +74,9 @@ class JOSIE(nn.Module):
             self._add_image_token()
             self._add_video_token()
             self._add_audio_token()
+            self._add_thermal_token()
+            self._add_depth_token()
+            self._add_imu_token()
             self.reasoner.resize_token_embeddings(len(self.tokenizer))
             print("...  Spetial Tokens added to vocabulary")
 
@@ -149,9 +152,9 @@ class JOSIE(nn.Module):
         with torch.no_grad():
             embeddings = self.imagebind_encoder(inputs)
             video_embeds = embeddings[ModalityType.VISION]
-        inputs_reasoner = self.input_projetor(video_embeds).unsqueeze(1)
-        atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
-        return inputs_reasoner, atts_llama
+        outputs_input_projetor = self.input_projetor(video_embeds).unsqueeze(1)
+        atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
+        return outputs_input_projetor, atts_reasoner
 
     def encode_audio(self, audio_paths):
         print("Encoding Audio")
@@ -160,9 +163,9 @@ class JOSIE(nn.Module):
         with torch.no_grad():
             embeddings = self.imagebind_encoder(inputs)
             audio_embeds = embeddings[ModalityType.AUDIO]
-        inputs_reasoner = self.input_projetor(audio_embeds).unsqueeze(1)
-        atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
-        return inputs_reasoner, atts_llama
+        outputs_input_projetor = self.input_projetor(audio_embeds).unsqueeze(1)
+        atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
+        return outputs_input_projetor, atts_reasoner
 
     def encode_image(self, image_paths):
         print("Encoding Image")
@@ -171,9 +174,42 @@ class JOSIE(nn.Module):
         with torch.no_grad():
             embeddings = self.imagebind_encoder(inputs)
             image_embeds = embeddings[ModalityType.VISION]
-        inputs_reasoner = self.input_projetor(image_embeds).unsqueeze(1)
-        atts_llama = torch.ones(inputs_reasoner.size()[:-1], dtype=torch.long).to(device)
-        return inputs_reasoner, atts_llama
+        outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
+        atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
+        return outputs_input_projetor, atts_reasoner
+    
+    def encode_themal_image(self, thermal_paths):
+        print("Encoding thermal Image")
+        inputs = {ModalityType.THERMAL: data.load_and_transform_vision_data(thermal_paths, device)}
+        inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
+        with torch.no_grad():
+            embeddings = self.imagebind_encoder(inputs)
+            image_embeds = embeddings[ModalityType.VITHERMALSION]
+        outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
+        atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
+        return outputs_input_projetor, atts_reasoner
+    
+    def encode_depth_image(self, depth_paths):
+        print("Encoding depth Image")
+        inputs = {ModalityType.DEPTH: data.load_and_transform_vision_data(depth_paths, device)}
+        inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
+        with torch.no_grad():
+            embeddings = self.imagebind_encoder(inputs)
+            image_embeds = embeddings[ModalityType.DEPTH]
+        outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
+        atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
+        return outputs_input_projetor, atts_reasoner
+    
+    def encode_imu(self, imu_paths):
+        print("Encoding Imu")
+        inputs = {ModalityType.IMU: data.load_and_transform_vision_data(imu_paths, device)}
+        inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
+        with torch.no_grad():
+            embeddings = self.imagebind_encoder(inputs)
+            image_embeds = embeddings[ModalityType.IMU]
+        outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
+        atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
+        return outputs_input_projetor, atts_reasoner
 
 
     def prompt_wrap_old(self, img_embeds, input_ids, target_ids, attention_mask):
@@ -339,6 +375,48 @@ class JOSIE(nn.Module):
         feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
         return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
     
+    def _prepare_thermal_embed(self, inputs, batch_size):
+        features = []
+        p_before_token = self.tokenizer('<|thermal_start|>', add_special_tokens=False, return_tensors='pt').to(device)
+        p_after_token = self.tokenizer('<|thermal_end|>', add_special_tokens=False, return_tensors='pt').to(device)
+
+        p_before_embeds = self.reasoner.model.embed_tokens(p_before_token.input_ids).expand(batch_size, -1, -1)
+        p_after_embeds = self.reasoner.model.embed_tokens(p_after_token.input_ids).expand(batch_size, -1, -1)
+
+        _temp_embedding, _ = self.encode_themal_image(inputs['thermal_paths'])
+        features.append(_temp_embedding)
+
+        feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
+        return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
+    
+    def _prepare_depth_embed(self, inputs, batch_size):
+        features = []
+        p_before_token = self.tokenizer('<|depth_start|>', add_special_tokens=False, return_tensors='pt').to(device)
+        p_after_token = self.tokenizer('<|depth_end|>', add_special_tokens=False, return_tensors='pt').to(device)
+
+        p_before_embeds = self.reasoner.model.embed_tokens(p_before_token.input_ids).expand(batch_size, -1, -1)
+        p_after_embeds = self.reasoner.model.embed_tokens(p_after_token.input_ids).expand(batch_size, -1, -1)
+
+        _temp_embedding, _ = self.encode_depth_image(inputs['depth_paths'])
+        features.append(_temp_embedding)
+
+        feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
+        return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
+    
+    def _prepare_imu_embed(self, inputs, batch_size):
+        features = []
+        p_before_token = self.tokenizer('<|imu_start|>', add_special_tokens=False, return_tensors='pt').to(device)
+        p_after_token = self.tokenizer('<|imu_end|>', add_special_tokens=False, return_tensors='pt').to(device)
+
+        p_before_embeds = self.reasoner.model.embed_tokens(p_before_token.input_ids).expand(batch_size, -1, -1)
+        p_after_embeds = self.reasoner.model.embed_tokens(p_after_token.input_ids).expand(batch_size, -1, -1)
+
+        _temp_embedding, _ = self.encode_imu(inputs['imu_paths'])
+        features.append(_temp_embedding)
+
+        feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
+        return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
+    
 
     # def extract_multimodal_feature(self, inputs):
     #     features = []
@@ -351,6 +429,15 @@ class JOSIE(nn.Module):
     #     if inputs['video_paths']:
     #         video_embeds, _ = self.encode_video(inputs['video_paths'])
     #         features.append(video_embeds)
+    #     if inputs[thermal_paths']:
+    #         thermal_embeds, _ = self.encode_themal_image(inputs['thermal_paths'])
+    #         features.append(thermal_embeds)
+    #     if inputs['depth_paths']:
+    #         depth_embeds, _ = self.encode_depth_image(inputs['depth_paths'])
+    #         features.append(depth_embeds)
+    #     if inputs['imu_paths']:
+    #         imu_embeds, _ = self.encode_imu(inputs['imu_paths'])
+    #         features.append(imu_embeds)
 
     #     feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
     #     return feature_embeds
@@ -368,6 +455,12 @@ class JOSIE(nn.Module):
             text += ' <|audio_start|> '
         if 'video_paths' in inputs:
             text += ' <|video_start|> '
+        if 'thermal_paths' in inputs:
+            text += ' <|thermal_start|> '
+        if 'depth_paths' in inputs:
+            text += ' <|depth_start|> '
+        if 'imu_paths' in inputs:
+            text += ' <imu_start|> '
         print(text)
         input()
 
@@ -382,6 +475,15 @@ class JOSIE(nn.Module):
             elif st.startswith('<|video_start|>'):
                 print("recieved video")
                 input_embeds.append(self._prepare_video_embed(inputs, batch_size))
+            elif st.startswith('<|thermal_start|>'):
+                print("recieved thermal")
+                input_embeds.append(self._prepare_thermal_embed(inputs, batch_size))
+            elif st.startswith('<|depth_start|>'):
+                print("recieved depth")
+                input_embeds.append(self._prepare_depth_embed(inputs, batch_size))
+            elif st.startswith('<|imu_start|>'):
+                print("recieved Imu")
+                input_embeds.append(self._prepare_imu_embed(inputs, batch_size))
             else:
                 print(input_embeds)
                 input()
@@ -427,6 +529,8 @@ class JOSIE(nn.Module):
             'audio_paths': optional,
             'video_paths': optional,
             'thermal_paths': optional,
+            'depth_paths': optional,
+            'imu_paths': optional,
             'mode': generation mode,
             'prompt': human input prompt,
             'max_tgt_len': generation length,
