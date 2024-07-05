@@ -790,4 +790,10 @@ tensor([[  362,   883,   374, 11699,   389,   264, 13425,    11,  9963,   264,
           9982,   432,   705,    13,   576,  5112,  6239,   369, 19281,   323,
           7203,   525, 59021,    11, 18860,   429,   419,  6109,   374,  4363]])
 Tokenized the Outputs
- A man is sitting on a bench, holding a large bouquet of flowers. The camera zooms in on the man's face and the bouquet as he holds it up. The sound effects for flowers and movement are muted, indicating that this scene is likely
+ A man is sitting on a bench, holding a large bouquet of flowers. The camera zooms in on the man's face and the bouquet as he holds it up. The sound effects for flowers and movement are muted, indicating that this scene is likel
+
+ Input:
+
+image_paths': ['J.O.S.I.E.-v4o/.assets/bird_image.jpg']
+audio_paths': ['J.O.S.I.E.-v4o/.assets/bird_audio.wav']
+prompt': 'Describe the image and audio:'
