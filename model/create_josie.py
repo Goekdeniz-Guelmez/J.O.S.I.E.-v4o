@@ -17,6 +17,11 @@ class Args():
 
 model = JOSIE(Args())
 
+print("Loading model...")
+model.load_state_dict(torch.load("/Users/gokdenizgulmez/Desktop/first_working_creation.pth"))
+model.eval()
+print("... Model loaded")
+
 # print(model)
 
 # with open("/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/model_architecture.txt", "w") as file:
@@ -58,9 +63,6 @@ print(output_tokens)
 
 torch.save(model.state_dict(), "/Users/gokdenizgulmez/Desktop/first_working_creation.pth")
 
-print("Model's state_dict:")
-for param_tensor in model.state_dict():
-    print(param_tensor, "\t", model.state_dict()[param_tensor].size())
-
-# model.load_state_dict(torch.load("/Users/gokdenizgulmez/Desktop/first_working_creation.pth"))
-# model.eval()
+# print("Model's state_dict:")
+# for param_tensor in model.state_dict():
+#     print(param_tensor, "\t", model.state_dict()[param_tensor].size())
