@@ -177,7 +177,7 @@ class JOSIE(nn.Module):
         outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
         atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
         return outputs_input_projetor, atts_reasoner
-    
+
     def encode_themal_image(self, thermal_paths):
         print("Encoding thermal Image")
         inputs = {ModalityType.THERMAL: data.load_and_transform_vision_data(thermal_paths, device)}
@@ -188,7 +188,7 @@ class JOSIE(nn.Module):
         outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
         atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
         return outputs_input_projetor, atts_reasoner
-    
+
     def encode_depth_image(self, depth_paths):
         print("Encoding depth Image")
         inputs = {ModalityType.DEPTH: data.load_and_transform_vision_data(depth_paths, device)}
@@ -199,7 +199,7 @@ class JOSIE(nn.Module):
         outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
         atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
         return outputs_input_projetor, atts_reasoner
-    
+
     def encode_imu(self, imu_paths):
         print("Encoding Imu")
         inputs = {ModalityType.IMU: data.load_and_transform_vision_data(imu_paths, device)}
@@ -331,13 +331,13 @@ class JOSIE(nn.Module):
         valid_tokens = gen_acc & valid_mask  # [B*S]
         gen_acc = valid_tokens.sum().item() / (valid_mask.sum().item() + 1.0)
         return loss, gen_acc
-    
+
 
     def _prepare_image_embed(self, inputs, batch_size):
         features = []
         p_before_token = self.tokenizer('<|image_start|>', add_special_tokens=False, return_tensors='pt').to(device)
         p_after_token = self.tokenizer('<|image_end|>', add_special_tokens=False, return_tensors='pt').to(device)
-        
+
         p_before_embeds = self.reasoner.model.embed_tokens(p_before_token.input_ids).expand(batch_size, -1, -1)
         p_after_embeds = self.reasoner.model.embed_tokens(p_after_token.input_ids).expand(batch_size, -1, -1)
 
@@ -374,7 +374,7 @@ class JOSIE(nn.Module):
 
         feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
         return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
-    
+
     def _prepare_thermal_embed(self, inputs, batch_size):
         features = []
         p_before_token = self.tokenizer('<|thermal_start|>', add_special_tokens=False, return_tensors='pt').to(device)
@@ -388,7 +388,7 @@ class JOSIE(nn.Module):
 
         feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
         return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
-    
+
     def _prepare_depth_embed(self, inputs, batch_size):
         features = []
         p_before_token = self.tokenizer('<|depth_start|>', add_special_tokens=False, return_tensors='pt').to(device)
@@ -402,7 +402,7 @@ class JOSIE(nn.Module):
 
         feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
         return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
-    
+
     def _prepare_imu_embed(self, inputs, batch_size):
         features = []
         p_before_token = self.tokenizer('<|imu_start|>', add_special_tokens=False, return_tensors='pt').to(device)
@@ -416,7 +416,7 @@ class JOSIE(nn.Module):
 
         feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
         return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
-    
+
 
     # def extract_multimodal_feature(self, inputs):
     #     features = []
@@ -445,8 +445,6 @@ class JOSIE(nn.Module):
     def prepare_generation_embedding(self, inputs):
         prompt = inputs['prompt']
         text = f"<|im_start|>system\nYou are a assistant<|im_end|>\n<|im_start|>user\n{prompt}"
-        print("text prompt: ", text)
-        input()
         batch_size = 1
         input_embeds = []
         if 'image_paths' in inputs:
@@ -461,8 +459,8 @@ class JOSIE(nn.Module):
             text += ' <|depth_start|> '
         if 'imu_paths' in inputs:
             text += ' <imu_start|> '
-        print(text)
-        input()
+
+        print("text prompt: ", text)
 
         split_text = re.split(r'(<\|image_start\|>|<\|audio_start\|>|<\|video_start\|>)', text)
         for st in split_text:
@@ -491,7 +489,7 @@ class JOSIE(nn.Module):
                 input_embeds.append(text_embeds)
         inputs_embeds = torch.cat(input_embeds, dim=1)
         return inputs_embeds
-    
+
     def generate_tokens_embeddings(self, inputs, input_embeds, temperature: float = 0.0, top_p: float = 1.0):
         """
         This function is used to generate the tokens
@@ -516,7 +514,7 @@ class JOSIE(nn.Module):
             output_attentions=True
         )
 
-        return outputs.sequences
+        return outputs.sequences, outputs.hidden_states
 
     def generate(self, inputs):
         """
@@ -562,11 +560,10 @@ class JOSIE(nn.Module):
         print("Generaded and Prepared the inputs:")
         print(input_embeds)
 
-        generated_ids = self.generate_tokens_embeddings(inputs, input_embeds)
+        generated_ids, generated_hidden_states = self.generate_tokens_embeddings(inputs, input_embeds) # generated_hidden_states for further  transformation
         print("Generates IDs from the Reasoner:")
         print(generated_ids)
 
         output = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
         print("Tokenized the Outputs")
         return output
-
