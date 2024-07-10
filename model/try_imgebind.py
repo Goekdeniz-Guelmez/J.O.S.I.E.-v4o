@@ -1,6 +1,6 @@
-from imagebind import data
-from imagebind.models import imagebind_model
-from imagebind.models.imagebind_model import ModalityType
+from encoder import data
+from encoder.models import imagebind_model
+from encoder.models.imagebind_model import ModalityType
 
 import torch
 
