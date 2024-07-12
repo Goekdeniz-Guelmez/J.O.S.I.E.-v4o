@@ -267,7 +267,7 @@ class JOSIE(nn.Module):
 
         # 1. Precompute common elements
         bos = torch.full((batch_size, 1), self.bos_token_id, dtype=input_ids.dtype, device=device)
-        embed_fn = self.reasoner.model.embed_tokens if self.args['freeze_lm'] else self.reasoner.model.model.embed_tokens
+        embed_tokens = self.reasoner.model.embed_tokens if self.args['freeze_lm'] else self.reasoner.model.model.embed_tokens
 
         # 2. Use torch.cat for concatenation instead of multiple .expand() calls
         p_before = "<|im_end|>\n<|im_start|>main user \"Gökddeniz Gülmez\"\n"
@@ -276,10 +276,10 @@ class JOSIE(nn.Module):
 
         # 3. Combine embeddings in a single operation
         embeds_list = [
-            embed_fn(bos),
-            embed_fn(p_before_tokens.input_ids).expand(batch_size, -1, -1),
+            embed_tokens(bos),
+            embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1, -1),
             img_embeds if img_embeds is not None else torch.tensor([]),
-            embed_fn(input_ids)
+            embed_tokens(input_ids)
         ]
         inputs_embeds = torch.cat([emb for emb in embeds_list if emb.numel() > 0], dim=1)
 
