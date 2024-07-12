@@ -21,7 +21,9 @@ def _encoder_alignment_training_stage_2(self, model, inputs):
             raise NotImplementedError
         input_ids, target_ids, attention_mask = process_batch_stage_2(self.tokenizer, inputs['output_texts'], self.max_length, self.args['prompt'])
         print(input_ids)
-        inputs_embeds, targets, attention_mask = self.model.prompt_wrap(mm_embeds, input_ids, target_ids, attention_mask)
+
+        inputs_embeds, targets, attention_mask = self.model.prompt_wrap_new(mm_embeds, input_ids, target_ids, attention_mask)
+
         outputs = self.model.reasoner(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,

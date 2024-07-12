@@ -270,7 +270,7 @@ class JOSIE(nn.Module):
         embed_fn = self.reasoner.model.embed_tokens if self.args['freeze_lm'] else self.reasoner.model.model.embed_tokens
 
         # 2. Use torch.cat for concatenation instead of multiple .expand() calls
-        p_before = "<|im_end|>\n<|im_start|>user\n"
+        p_before = "<|im_end|>\n<|im_start|>main user \"Gökddeniz Gülmez\"\n"
         p_before += "<|image_start|>" if img_embeds is not None else ""
         p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(device)
 
