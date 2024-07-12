@@ -1,7 +1,7 @@
 import torch
 from torch.nn.utils import rnn
 
-def build_one_instance_stage_1(tokenizer, captions, prompt=''):
+def build_one_instance_stage_2(tokenizer, captions, prompt=''):
     input_ids, target_ids = [], []
     texts = ''
     text = "<|image_end|> " + prompt + "<|im_start|>assistant \n"
@@ -17,10 +17,10 @@ def build_one_instance_stage_1(tokenizer, captions, prompt=''):
     target_ids += one_input_id
     return input_ids, target_ids
 
-def process_batch_stage_1(tokenizer, batch_of_captions, max_tgt_len, prompt=''):
+def process_batch_stage_2(tokenizer, batch_of_captions, max_tgt_len, prompt=''):
     batch_input_ids, batch_target_ids = [], []
     for caption in batch_of_captions:
-        one_input_ids, one_target_ids = build_one_instance_stage_1(tokenizer, caption, prompt)
+        one_input_ids, one_target_ids = build_one_instance_stage_2(tokenizer, caption, prompt)
         batch_input_ids.append(torch.LongTensor(one_input_ids))
         batch_target_ids.append(torch.LongTensor(one_target_ids))
     input_ids = rnn.pad_sequence(batch_input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
