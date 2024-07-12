@@ -29,7 +29,7 @@ def _encoder_alignment_training_stage_2(self, model, inputs):
             attention_mask=attention_mask,
             return_dict=True,
             output_hidden_states=True,
-            labels=targets,
+            labels=targets
         )
 
         loss = outputs.loss
