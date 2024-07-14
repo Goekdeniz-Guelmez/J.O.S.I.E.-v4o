@@ -11,6 +11,8 @@ import torch.nn as nn
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
 
+# TODO implement Asynchronous Processing, Streaming Input, Optimized Encoding, ... More info in the TODO.md file
+
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 class StoppingCriteriaSub(StoppingCriteria):
