@@ -1,20 +1,10 @@
-#!/usr/bin/env python3
-# Portions Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-# Updated code for cleaner representations
-
-
-import os
 from functools import partial
 from types import SimpleNamespace
 from dataclasses import dataclass
 
 import torch.nn as nn
 
-from encoder2.models.helpers import (EinOpsRearrange, LearnableLogitScaling, SelectElement, RMSNorm)
+from encoder2.models.helpers import (EinOpsRearrange, SelectElement, RMSNorm)
 from encoder2.models.multimodal_preprocessors import (AudioPreprocessor, PadIm2Video, PatchEmbedGeneric, RGBDTPreprocessor, SpatioTemporalPosEmbeddingHelper, ThermalPreprocessor)
 from encoder2.models.encoder_transformer import MultiheadAttention, SimpleTransformer
 
