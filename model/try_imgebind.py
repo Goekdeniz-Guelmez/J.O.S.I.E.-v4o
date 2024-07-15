@@ -27,16 +27,20 @@ inputs = {
     ModalityType.AUDIO: data.load_and_transform_audio_data(audio_paths, device),
 }
 
-with torch.no_grad():
-    embeddings = model(inputs)
+for i in range(3):
+    with torch.no_grad():
+        embeddings = model(inputs)
 
 # print("Vision x Text: ", torch.softmax(embeddings[ModalityType.VISION] @ embeddings[ModalityType.TEXT].T, dim=-1))
 # print("Audio x Text: ", torch.softmax(embeddings[ModalityType.AUDIO] @ embeddings[ModalityType.TEXT].T, dim=-1))
 # print("Vision x Audio: ", torch.softmax(embeddings[ModalityType.VISION] @ embeddings[ModalityType.AUDIO].T, dim=-1))
 
-print("Vision x Text: ", torch.softmax(embeddings[ModalityType.VISION], dim=-1))
-print("Audio x Text: ", torch.softmax(embeddings[ModalityType.AUDIO], dim=-1))
-print("Vision x Audio: ", torch.softmax(embeddings[ModalityType.VISION], dim=-1))
+    print(embeddings[ModalityType.VISION].shape)
+    print("Vision: ", torch.softmax(embeddings[ModalityType.VISION], dim=-1))
+
+    print(embeddings[ModalityType.AUDIO].shape)
+    print("Audio: ", torch.softmax(embeddings[ModalityType.AUDIO], dim=-1))
+    print("Vision x Audio: ", torch.softmax(embeddings[ModalityType.VISION] @ embeddings[ModalityType.AUDIO].T, dim=-1))
 
 """
 Vision x Text:  tensor([

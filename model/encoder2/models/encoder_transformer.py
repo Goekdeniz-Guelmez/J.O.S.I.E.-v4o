@@ -1,10 +1,11 @@
-from functools import partial
 from typing import Callable, List, Optional
 
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint as checkpoint
-from timm.models.layers import DropPath, trunc_normal_
+import torch.nn.functional as F
+from timm.models.layers import DropPath
+
+from encoder2.models.helpers import RMSNorm
 
 
 class Attention(nn.Module):
@@ -41,25 +42,18 @@ class Attention(nn.Module):
         return self.proj_drop(x)
 
 
-class Mlp(nn.Module):
-    def __init__(
-        self,
-        in_features,
-        hidden_features=None,
-        out_features=None,
-        act_layer=nn.GELU,
-        drop=0.0,
-    ):
+class MLP(nn.Module):
+    def __init__( self, dim: int, multiple_of: int = 256):
         super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features)
-        self.drop = nn.Dropout(drop)
+        hidden_dim = int(2 * dim / 3)
+        hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
+
+        self.w1 = nn.Linear(dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, dim, bias=False)
+        self.w3 = nn.Linear(dim, hidden_dim, bias=False)
 
     def forward(self, x):
-        return self.drop(self.fc2(self.drop(self.act(self.fc1(x)))))
+        return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
 
 class MultiheadAttention(nn.MultiheadAttention):
@@ -67,77 +61,37 @@ class MultiheadAttention(nn.MultiheadAttention):
         return super().forward(x, x, x, need_weights=False, attn_mask=attn_mask)[0]
 
 
-class ViTAttention(Attention):
-    def forward(self, x: torch.Tensor, attn_mask: torch.Tensor):
-        assert attn_mask is None
-        return super().forward(x)
-
-
-class BlockWithMasking(nn.Module):
+class Block(nn.Module):
     def __init__(
         self,
         dim: int,
         attn_target: Callable,
-        mlp_ratio: int = 4,
-        act_layer: Callable = nn.GELU,
-        norm_layer: Callable = nn.LayerNorm,
-        ffn_dropout_rate: float = 0.0,
         drop_path: float = 0.0,
         layer_scale_type: Optional[str] = None,
         layer_scale_init_value: float = 1e-4,
     ):
         super().__init__()
-
-        assert not isinstance(
-            attn_target, nn.Module
-        ), "attn_target should be a Callable. Otherwise attn_target is shared across blocks!"
         self.attn = attn_target()
-        if drop_path > 0.0:
-            self.drop_path = DropPath(drop_path)
-        else:
-            self.drop_path = nn.Identity()
-        self.norm_1 = norm_layer(dim)
-        mlp_hidden_dim = int(mlp_ratio * dim)
-        self.mlp = Mlp(
-            in_features=dim,
-            hidden_features=mlp_hidden_dim,
-            act_layer=act_layer,
-            drop=ffn_dropout_rate,
-        )
-        self.norm_2 = norm_layer(dim)
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.norm1 = RMSNorm(dim)
+        self.norm2 = RMSNorm(dim)
+        self.mlp = MLP(dim)
+        
         self.layer_scale_type = layer_scale_type
-        if self.layer_scale_type is not None:
-            assert self.layer_scale_type in [
-                "per_channel",
-                "scalar",
-            ], f"Found Layer scale type {self.layer_scale_type}"
-            if self.layer_scale_type == "per_channel":
-                # one gamma value per channel
-                gamma_shape = [1, 1, dim]
-            elif self.layer_scale_type == "scalar":
-                # single gamma value for all channels
-                gamma_shape = [1, 1, 1]
-            # two gammas: for each part of the fwd in the encoder
-            self.layer_scale_gamma1 = nn.Parameter(
-                torch.ones(size=gamma_shape) * layer_scale_init_value,
-                requires_grad=True,
-            )
-            self.layer_scale_gamma2 = nn.Parameter(
-                torch.ones(size=gamma_shape) * layer_scale_init_value,
-                requires_grad=True,
-            )
+        if layer_scale_type:
+            gamma_shape = [1, 1, dim] if layer_scale_type == "per_channel" else [1, 1, 1]
+            self.layer_scale_gamma1 = nn.Parameter(torch.ones(size=gamma_shape) * layer_scale_init_value, requires_grad=True)
+            self.layer_scale_gamma2 = nn.Parameter(torch.ones(size=gamma_shape) * layer_scale_init_value, requires_grad=True)
 
     def forward(self, x: torch.Tensor, attn_mask: torch.Tensor):
         if self.layer_scale_type is None:
-            x = x + self.drop_path(self.attn(self.norm_1(x), attn_mask))
-            x = x + self.drop_path(self.mlp(self.norm_2(x)))
+            x = x + self.drop_path(self.attn(self.norm1(x), attn_mask))
+            x = x + self.drop_path(self.mlp(self.norm2(x)))
         else:
-            x = (x + self.drop_path(self.attn(self.norm_1(x), attn_mask)) * self.layer_scale_gamma1)
-            x = x + self.drop_path(self.mlp(self.norm_2(x))) * self.layer_scale_gamma2
+            x = x + self.drop_path(self.attn(self.norm1(x), attn_mask)) * self.layer_scale_gamma1
+            x = x + self.drop_path(self.mlp(self.norm2(x))) * self.layer_scale_gamma2
         return x
-
-
-_LAYER_NORM = partial(nn.LayerNorm, eps=1e-6)
+    
 
 
 class SimpleTransformer(nn.Module):
@@ -146,83 +100,43 @@ class SimpleTransformer(nn.Module):
         attn_target: Callable,
         embed_dim: int,
         num_blocks: int,
-        block: Callable = BlockWithMasking,
         pre_transformer_layer: Optional[Callable] = None,
         post_transformer_layer: Optional[Callable] = None,
         drop_path_rate: float = 0.0,
         drop_path_type: str = "progressive",
-        norm_layer: Callable = _LAYER_NORM,
-        mlp_ratio: int = 4,
-        ffn_dropout_rate: float = 0.0,
-        layer_scale_type: Optional[str] = None,  # from cait; possible values are None, "per_channel", "scalar"
-        layer_scale_init_value: float = 1e-4,  # from cait; float
-        weight_init_style: str = "jax",  # possible values jax or pytorch
+        layer_scale_type: Optional[str] = None,
+        layer_scale_init_value: float = 1e-4
     ):
         super().__init__()
         self.pre_transformer_layer = pre_transformer_layer
+        self.post_transformer_layer = post_transformer_layer
+        
         if drop_path_type == "progressive":
-            dpr = [x.item() for x in torch.linspace(0, drop_path_rate, num_blocks)]
+            dpr = torch.linspace(0, drop_path_rate, num_blocks).tolist()
         elif drop_path_type == "uniform":
-            dpr = [drop_path_rate for i in range(num_blocks)]
+            dpr = [drop_path_rate] * num_blocks
         else:
             raise ValueError(f"Unknown drop_path_type: {drop_path_type}")
 
-        self.blocks = nn.Sequential(
-            *[
-                block(
-                    dim=embed_dim,
-                    attn_target=attn_target,
-                    mlp_ratio=mlp_ratio,
-                    ffn_dropout_rate=ffn_dropout_rate,
-                    drop_path=dpr[i],
-                    norm_layer=norm_layer,
-                    layer_scale_type=layer_scale_type,
-                    layer_scale_init_value=layer_scale_init_value,
-                )
-                for i in range(num_blocks)
-            ]
-        )
-        self.post_transformer_layer = post_transformer_layer
-        self.weight_init_style = weight_init_style
-        self.apply(self._init_weights)
+        self.blocks = nn.ModuleList([
+            Block(
+                dim=embed_dim,
+                attn_target=attn_target,
+                drop_path=dpr[i],
+                layer_scale_type=layer_scale_type,
+                layer_scale_init_value=layer_scale_init_value,
+            )
+            for i in range(num_blocks)
+        ])
 
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            if self.weight_init_style == "jax":
-                torch.nn.init.xavier_uniform_(m.weight)
-            elif self.weight_init_style == "pytorch":
-
-                trunc_normal_(m.weight, std=0.02)
-
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, (nn.LayerNorm)):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-
-    def forward(
-        self,
-        tokens: torch.Tensor,
-        attn_mask: torch.Tensor = None,
-        use_checkpoint: bool = False,
-        checkpoint_every_n: int = 1,
-        checkpoint_blk_ids: Optional[List[int]] = None,
-    ):
+    def forward(self, tokens: torch.Tensor, attn_mask: torch.Tensor = None):
         if self.pre_transformer_layer:
             tokens = self.pre_transformer_layer(tokens)
-        if use_checkpoint and checkpoint_blk_ids is None:
-            checkpoint_blk_ids = [
-                blk_id
-                for blk_id in range(len(self.blocks))
-                if blk_id % checkpoint_every_n == 0
-            ]
-        if checkpoint_blk_ids:
-            checkpoint_blk_ids = set(checkpoint_blk_ids)
+
         for blk_id, blk in enumerate(self.blocks):
-            if use_checkpoint and blk_id in checkpoint_blk_ids:
-                tokens = checkpoint.checkpoint(blk, tokens, attn_mask, use_reentrant=False)
-            else:
-                tokens = blk(tokens, attn_mask=attn_mask)
+            tokens = blk(tokens, attn_mask=attn_mask)
+
         if self.post_transformer_layer:
             tokens = self.post_transformer_layer(tokens)
+
         return tokens

@@ -14,33 +14,31 @@ from dataclasses import dataclass
 
 import torch.nn as nn
 
-from encoder2.models.helpers import (EinOpsRearrange, LearnableLogitScaling, Normalize, SelectElement, SelectEOSAndProject)
-from encoder2.models.multimodal_preprocessors import (AudioPreprocessor, IMUPreprocessor, PadIm2Video, PatchEmbedGeneric, RGBDTPreprocessor, SpatioTemporalPosEmbeddingHelper, ThermalPreprocessor)
+from encoder2.models.helpers import (EinOpsRearrange, LearnableLogitScaling, SelectElement, RMSNorm)
+from encoder2.models.multimodal_preprocessors import (AudioPreprocessor, PadIm2Video, PatchEmbedGeneric, RGBDTPreprocessor, SpatioTemporalPosEmbeddingHelper, ThermalPreprocessor)
 from encoder2.models.encoder_transformer import MultiheadAttention, SimpleTransformer
 
 ModalityType = SimpleNamespace(
     VISION="vision",
     AUDIO="audio",
     THERMAL="thermal",
-    DEPTH="depth",
-    IMU="imu"
+    DEPTH="depth"
 )
 
 
 @dataclass
 class EncoderModelArgs():
-    video_frames: int = 2
-    kernel_size: tuple = (2, 14, 14)
-
     out_embed_dim: int = 1024
 
-    vision_embed_dim: int = 1280
-    vision_num_blocks: int = 32
-    vision_num_heads: int = 16
+    vision_embed_dim: int = 768
+    vision_num_blocks: int = 12
+    vision_num_heads: int = 8
+    video_frames: int = 60
+    kernel_size: tuple = (2, 14, 14)
 
     audio_embed_dim: int = 768
     audio_num_blocks: int = 12
-    audio_num_heads: int = 12
+    audio_num_heads: int = 8
     audio_num_mel_bins: int = 128
     audio_target_len: int = 204
     audio_drop_path: float = 0.1
@@ -49,21 +47,15 @@ class EncoderModelArgs():
 
     depth_embed_dim: int = 384
     depth_kernel_size: int = 16
-    depth_num_blocks: int = 12
-    depth_num_heads: int = 8
+    depth_num_blocks: int = 6
+    depth_num_heads: int = 4
     depth_drop_path: float = 0.0
 
     thermal_embed_dim: int = 768
     thermal_kernel_size: int = 16
-    thermal_num_blocks: int = 12
-    thermal_num_heads: int = 12
+    thermal_num_blocks: int = 6
+    thermal_num_heads: int = 4
     thermal_drop_path: float = 0.0
-
-    imu_embed_dim: int = 512
-    imu_kernel_size: int = 8
-    imu_num_blocks: int = 6
-    imu_num_heads: int = 8
-    imu_drop_path: float = 0.7
 
     def update(self, **kwargs):
         for key, value in kwargs.items():
@@ -79,14 +71,9 @@ class Encoder(nn.Module):
         super().__init__()
 
         self.args = args
-
         self.modality_preprocessors = self._create_modality_preprocessors(self.args)
-
         self.modality_trunks = self._create_modality_trunks(self.args)
-
         self.modality_heads = self._create_modality_heads(self.args)
-
-        self.modality_postprocessors = self._create_modality_postprocessors(self.args.out_embed_dim)
 
     def _create_modality_preprocessors(self, args):
         rgbt_stem = PatchEmbedGeneric(
@@ -119,7 +106,7 @@ class Encoder(nn.Module):
                     bias=False,
                 ),
             ],
-            norm_layer=nn.LayerNorm(normalized_shape=args.audio_embed_dim),
+            norm_layer=RMSNorm(args.audio_embed_dim)
         )
         audio_preprocessor = AudioPreprocessor(
             img_size=[1, args.audio_num_mel_bins, args.audio_target_len],
@@ -138,7 +125,7 @@ class Encoder(nn.Module):
                     bias=False,
                 ),
             ],
-            norm_layer=nn.LayerNorm(normalized_shape=args.depth_embed_dim),
+            norm_layer=RMSNorm(args.depth_embed_dim)
         )
 
         depth_preprocessor = RGBDTPreprocessor(
@@ -159,7 +146,7 @@ class Encoder(nn.Module):
                     bias=False,
                 ),
             ],
-            norm_layer=nn.LayerNorm(normalized_shape=args.thermal_embed_dim),
+            norm_layer=RMSNorm(args.thermal_embed_dim),
         )
         thermal_preprocessor = ThermalPreprocessor(
             img_size=[1, 224, 224],
@@ -168,45 +155,27 @@ class Encoder(nn.Module):
             thermal_stem=thermal_stem,
         )
 
-        imu_stem = PatchEmbedGeneric(
-            [
-                nn.Linear(
-                    in_features=48,
-                    out_features=args.imu_embed_dim,
-                    bias=False,
-                ),
-            ],
-            norm_layer=nn.LayerNorm(normalized_shape=args.imu_embed_dim),
-        )
-
-        imu_preprocessor = IMUPreprocessor(
-            img_size=[6, 2000],
-            num_cls_tokens=1,
-            kernel_size=8,
-            embed_dim=args.imu_embed_dim,
-            pos_embed_fn=partial(SpatioTemporalPosEmbeddingHelper, learnable=True),
-            imu_stem=imu_stem,
-        )
-
         modality_preprocessors = {
             ModalityType.VISION: rgbt_preprocessor,
             ModalityType.AUDIO: audio_preprocessor,
             ModalityType.DEPTH: depth_preprocessor,
-            ModalityType.THERMAL: thermal_preprocessor,
-            ModalityType.IMU: imu_preprocessor,
+            ModalityType.THERMAL: thermal_preprocessor
         }
 
         return nn.ModuleDict(modality_preprocessors)
 
     def _create_modality_trunks(self, args):
-        def instantiate_trunk(
-            embed_dim, num_blocks, num_heads, pre_transformer_ln, add_bias_kv, drop_path
-        ):
+        def instantiate_trunk(embed_dim, num_blocks, num_heads, add_bias_kv, drop_path):
             return SimpleTransformer(
+                pre_transformer_layer=nn.Sequential(
+                    RMSNorm(embed_dim, eps=1e-6),
+                    EinOpsRearrange("b l d -> l b d")
+                ),
+
                 embed_dim=embed_dim,
                 num_blocks=num_blocks,
-                ffn_dropout_rate=0.0,
                 drop_path_rate=drop_path,
+
                 attn_target=partial(
                     MultiheadAttention,
                     embed_dim=embed_dim,
@@ -214,12 +183,7 @@ class Encoder(nn.Module):
                     bias=True,
                     add_bias_kv=add_bias_kv,
                 ),
-                pre_transformer_layer=nn.Sequential(
-                    nn.LayerNorm(embed_dim, eps=1e-6)
-                    if pre_transformer_ln
-                    else nn.Identity(),
-                    EinOpsRearrange("b l d -> l b d"),
-                ),
+
                 post_transformer_layer=EinOpsRearrange("l b d -> b l d"),
             )
 
@@ -228,7 +192,6 @@ class Encoder(nn.Module):
             args.vision_embed_dim,
             args.vision_num_blocks,
             args.vision_num_heads,
-            pre_transformer_ln=True,
             add_bias_kv=False,
             drop_path=0.0,
         )
@@ -236,7 +199,6 @@ class Encoder(nn.Module):
             args.audio_embed_dim,
             args.audio_num_blocks,
             args.audio_num_heads,
-            pre_transformer_ln=False,
             add_bias_kv=True,
             drop_path=args.audio_drop_path,
         )
@@ -244,7 +206,6 @@ class Encoder(nn.Module):
             args.depth_embed_dim,
             args.depth_num_blocks,
             args.depth_num_heads,
-            pre_transformer_ln=False,
             add_bias_kv=True,
             drop_path=args.depth_drop_path,
         )
@@ -252,17 +213,8 @@ class Encoder(nn.Module):
             args.thermal_embed_dim,
             args.thermal_num_blocks,
             args.thermal_num_heads,
-            pre_transformer_ln=False,
             add_bias_kv=True,
             drop_path=args.thermal_drop_path,
-        )
-        modality_trunks[ModalityType.IMU] = instantiate_trunk(
-            args.imu_embed_dim,
-            args.imu_num_blocks,
-            args.imu_num_heads,
-            pre_transformer_ln=False,
-            add_bias_kv=True,
-            drop_path=args.imu_drop_path,
         )
 
         return nn.ModuleDict(modality_trunks)
@@ -271,45 +223,34 @@ class Encoder(nn.Module):
         modality_heads = {}
 
         modality_heads[ModalityType.VISION] = nn.Sequential(
-            nn.LayerNorm(normalized_shape=args.vision_embed_dim, eps=1e-6),
+            RMSNorm(args.vision_embed_dim, eps=1e-6),
             SelectElement(index=0),
             nn.Linear(args.vision_embed_dim, args.out_embed_dim, bias=False),
+            # RMSNorm(args.out_embed_dim)
         )
 
         modality_heads[ModalityType.AUDIO] = nn.Sequential(
-            nn.LayerNorm(normalized_shape=args.audio_embed_dim, eps=1e-6),
+            RMSNorm(args.audio_embed_dim, eps=1e-6),
             SelectElement(index=0),
             nn.Linear(args.audio_embed_dim, args.out_embed_dim, bias=False),
+            # RMSNorm(args.out_embed_dim)
         )
 
         modality_heads[ModalityType.DEPTH] = nn.Sequential(
-            nn.LayerNorm(normalized_shape=args.depth_embed_dim, eps=1e-6),
+            RMSNorm(args.depth_embed_dim, eps=1e-6),
             SelectElement(index=0),
             nn.Linear(args.depth_embed_dim, args.out_embed_dim, bias=False),
+            # RMSNorm(args.out_embed_dim)
         )
 
         modality_heads[ModalityType.THERMAL] = nn.Sequential(
-            nn.LayerNorm(normalized_shape=args.thermal_embed_dim, eps=1e-6),
+            RMSNorm(args.thermal_embed_dim, eps=1e-6),
             SelectElement(index=0),
             nn.Linear(args.thermal_embed_dim, args.out_embed_dim, bias=False),
+            # RMSNorm(args.out_embed_dim)
         )
 
-        modality_heads[ModalityType.IMU] = nn.Sequential(
-            nn.LayerNorm(normalized_shape=args.imu_embed_dim, eps=1e-6),
-            SelectElement(index=0),
-            nn.Dropout(p=0.5),
-            nn.Linear(args.imu_embed_dim, args.out_embed_dim, bias=False),
-        )
         return nn.ModuleDict(modality_heads)
-
-    def _create_modality_postprocessors(self, out_embed_dim):
-        modality_postprocessors = {}
-        modality_postprocessors[ModalityType.VISION] = Normalize(dim=-1)
-        modality_postprocessors[ModalityType.AUDIO] = nn.Sequential(Normalize(dim=-1), LearnableLogitScaling(logit_scale_init=20.0, learnable=False))
-        modality_postprocessors[ModalityType.DEPTH] = nn.Sequential(Normalize(dim=-1), LearnableLogitScaling(logit_scale_init=5.0, learnable=False))
-        modality_postprocessors[ModalityType.THERMAL] = nn.Sequential(Normalize(dim=-1), LearnableLogitScaling(logit_scale_init=10.0, learnable=False))
-        modality_postprocessors[ModalityType.IMU] = nn.Sequential(Normalize(dim=-1), LearnableLogitScaling(logit_scale_init=5.0, learnable=False))
-        return nn.ModuleDict(modality_postprocessors)
 
     def forward(self, inputs):
         outputs = {}
@@ -325,7 +266,6 @@ class Encoder(nn.Module):
                 head_inputs = modality_value["head"]
                 modality_value = self.modality_trunks[modality_key](**trunk_inputs)
                 modality_value = self.modality_heads[modality_key](modality_value, **head_inputs)
-                modality_value = self.modality_postprocessors[modality_key](modality_value)
 
                 if reduce_list:
                     modality_value = modality_value.reshape(B, S, -1)
@@ -334,7 +274,6 @@ class Encoder(nn.Module):
                 outputs[modality_key] = modality_value
 
         return outputs
-
 
 def create_encoder():
     encoder = Encoder(EncoderModelArgs())

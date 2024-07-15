@@ -1,24 +1,21 @@
-#!/usr/bin/env python3
-# Portions Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-
-
 import einops
 import numpy as np
 import torch
 import torch.nn as nn
 
 
-class Normalize(nn.Module):
-    def __init__(self, dim: int) -> None:
+class RMSNorm(torch.nn.Module):
+    def __init__(self, dim: int, eps: float = 1e-5):
         super().__init__()
-        self.dim = dim
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def _norm(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
     def forward(self, x):
-        return torch.nn.functional.normalize(x, dim=self.dim, p=2)
+        output = self._norm(x.float()).type_as(x)
+        return output * self.weight
 
 
 class LearnableLogitScaling(nn.Module):
