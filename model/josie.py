@@ -387,9 +387,6 @@ class JOSIE(nn.Module):
     #     if inputs['depth_paths']:
     #         depth_embeds, _ = self.encode_depth_image(inputs['depth_paths'])
     #         features.append(depth_embeds)
-    #     if inputs['imu_paths']:
-    #         imu_embeds, _ = self.encode_imu(inputs['imu_paths'])
-    #         features.append(imu_embeds)
 
     #     feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
     #     return feature_embeds
