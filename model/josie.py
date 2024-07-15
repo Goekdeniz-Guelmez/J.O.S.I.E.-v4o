@@ -2,9 +2,13 @@
 import os, re
 from typing import List
 
-from encoder.models import imagebind_model
-from encoder.models.imagebind_model import ModalityType
-from encoder import data
+# from encoder.models import imagebind_model
+# from encoder.models.imagebind_model import ModalityType
+# from encoder import data
+
+from encoder2 import data
+from encoder2.models import encoder
+from encoder2.models.encoder import ModalityType
 
 import torch
 import torch.nn as nn
@@ -45,7 +49,7 @@ class JOSIE(nn.Module):
         ##### ENCODER STUFF
         print(f"Initializing ImageBind encoder ...")
         # imagebind_encoder_path = os.path.join(self.args["imagebind_encoder_path"])
-        self.imagebind_encoder, self.imagebind_encoder_output_dim = imagebind_model.imagebind_huge(pretrained=True) #, store_path=imagebind_encoder_path)
+        self.imagebind_encoder, self.imagebind_encoder_output_dim = encoder.create_encoder() #, store_path=imagebind_encoder_path)
         for name, param in self.imagebind_encoder.named_parameters():
             param.requires_grad = False
         self.imagebind_encoder.eval()

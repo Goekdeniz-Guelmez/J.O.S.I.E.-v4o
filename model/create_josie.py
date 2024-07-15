@@ -18,7 +18,7 @@ class Args():
 model = JOSIE(Args())
 
 print("Loading model...")
-model.load_state_dict(torch.load("/Users/gokdenizgulmez/Desktop/first_working_creation.pth"))
+# model.load_state_dict(torch.load("/Users/gokdenizgulmez/Desktop/first_working_creation.pth"))
 model.eval()
 print("... Model loaded")
 
