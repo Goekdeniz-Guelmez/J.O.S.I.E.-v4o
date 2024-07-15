@@ -61,7 +61,7 @@ output_tokens = model.generate(inputs)
 print(output_tokens)
 
 
-torch.save(model.state_dict(), "/Users/gokdenizgulmez/Desktop/first_working_creation.pth")
+# torch.save(model.state_dict(), "/Users/gokdenizgulmez/Desktop/first_working_creation.pth")
 
 # print("Model's state_dict:")
 # for param_tensor in model.state_dict():

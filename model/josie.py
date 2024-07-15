@@ -370,21 +370,6 @@ class JOSIE(nn.Module):
         feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
         return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
 
-    def _prepare_imu_embed(self, inputs, batch_size):
-        features = []
-        p_before_token = self.tokenizer('<|imu_start|>', add_special_tokens=False, return_tensors='pt').to(device)
-        p_after_token = self.tokenizer('<|imu_end|>', add_special_tokens=False, return_tensors='pt').to(device)
-
-        p_before_embeds = self.reasoner.model.embed_tokens(p_before_token.input_ids).expand(batch_size, -1, -1)
-        p_after_embeds = self.reasoner.model.embed_tokens(p_after_token.input_ids).expand(batch_size, -1, -1)
-
-        _temp_embedding, _ = self.encode_imu(inputs['imu_paths'])
-        features.append(_temp_embedding)
-
-        feature_embeds = torch.cat(features).sum(dim=0).unsqueeze(0)
-        return torch.cat([p_before_embeds, feature_embeds, p_after_embeds], dim=1)
-
-
     # def extract_multimodal_feature(self, inputs):
     #     features = []
     #     if inputs['image_paths']:
@@ -424,8 +409,6 @@ class JOSIE(nn.Module):
             text += ' <|thermal_start|> '
         if 'depth_paths' in inputs:
             text += ' <|depth_start|> '
-        if 'imu_paths' in inputs:
-            text += ' <imu_start|> '
 
         print("text prompt: ", text)
 
@@ -444,9 +427,6 @@ class JOSIE(nn.Module):
             elif st.startswith('<|depth_start|>'):
                 print("recieved depth")
                 input_embeds.append(self._prepare_depth_embed(inputs, batch_size))
-            elif st.startswith('<|imu_start|>'):
-                print("recieved Imu")
-                input_embeds.append(self._prepare_imu_embed(inputs, batch_size))
             else:
                 text_tokens = self.tokenizer(st, add_special_tokens=False, return_tensors='pt').to(device)
                 bos = torch.ones([batch_size, 1], dtype=text_tokens.input_ids.dtype, device=text_tokens.input_ids.device) * self.bos_token_id
