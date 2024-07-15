@@ -7,8 +7,8 @@ from typing import List
 # from encoder import data
 
 from encoder2 import data
-from encoder2.models import encoder
-from encoder2.models.encoder import ModalityType
+from encoder2.models import encoder_v_a
+from encoder2.models.encoder_v_a import ModalityType
 
 import torch
 import torch.nn as nn
@@ -49,7 +49,7 @@ class JOSIE(nn.Module):
         ##### ENCODER STUFF
         print(f"Initializing ImageBind encoder ...")
         # encoder_path = os.path.join(self.args["encoder_path"])
-        self.encoder, self.encoder_output_dim = encoder.create_encoder() #, store_path=encoder_path)
+        self.encoder, self.encoder_output_dim = encoder_v_a.create_encoder_va() #, store_path=encoder_path)
         for name, param in self.encoder.named_parameters():
             param.requires_grad = False
         self.encoder.eval()

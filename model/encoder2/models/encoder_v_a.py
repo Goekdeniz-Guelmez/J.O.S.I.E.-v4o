@@ -155,7 +155,7 @@ class Encoder(nn.Module):
             nn.Linear(args.audio_embed_dim, args.out_embed_dim, bias=False),
             # RMSNorm(args.out_embed_dim)
         )
-        
+
         return nn.ModuleDict(modality_heads)
 
     def forward(self, inputs):
@@ -181,6 +181,6 @@ class Encoder(nn.Module):
 
         return outputs
 
-def create_encoder():
+def create_encoder_va():
     encoder = Encoder(EncoderModelArgs())
     return encoder, EncoderModelArgs.out_embed_dim

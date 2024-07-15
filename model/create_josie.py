@@ -18,14 +18,14 @@ class Args():
 model = JOSIE(Args())
 
 print("Loading model...")
-model.load_state_dict(torch.load("/Users/gokdenizgulmez/Desktop/first_working_creation_with_custom_encoders.pth"))
+# model.load_state_dict(torch.load("/Users/gokdenizgulmez/Desktop/first_working_creation_with_custom_encoders.pth"))
 model.eval()
 print("... Model loaded")
 
 # print(model)
 
-# with open("/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/model_architecture.txt", "w") as file:
-#     file.write(str(model))
+with open("/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/model_architecture.txt", "w") as file:
+    file.write(str(model))
 
 
 # Define inputs
@@ -61,8 +61,8 @@ output_tokens = model.generate(inputs)
 print(output_tokens)
 
 
-# torch.save(model.state_dict(), "/Users/gokdenizgulmez/Desktop/first_working_creation_with_custom_encoders.pth")
+torch.save(model.state_dict(), "/Users/gokdenizgulmez/Desktop/first_working_creation_with_custom_encoder_only_vision_&_audio.pth")
 
-# print("Model's state_dict:")
-# for param_tensor in model.state_dict():
-#     print(param_tensor, "\t", model.state_dict()[param_tensor].size())
+print("Model's state_dict:")
+for param_tensor in model.state_dict():
+    print(param_tensor, "\t", model.state_dict()[param_tensor].size())
