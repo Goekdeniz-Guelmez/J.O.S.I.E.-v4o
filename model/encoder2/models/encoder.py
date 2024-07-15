@@ -12,12 +12,11 @@ from functools import partial
 from types import SimpleNamespace
 from dataclasses import dataclass
 
-import torch
 import torch.nn as nn
 
-from encoder.models.helpers import (EinOpsRearrange, LearnableLogitScaling, Normalize, SelectElement, SelectEOSAndProject)
-from encoder.models.multimodal_preprocessors import (AudioPreprocessor, IMUPreprocessor, PadIm2Video, PatchEmbedGeneric, RGBDTPreprocessor, SpatioTemporalPosEmbeddingHelper, ThermalPreprocessor)
-from encoder.models.transformer import MultiheadAttention, SimpleTransformer
+from encoder2.models.helpers import (EinOpsRearrange, LearnableLogitScaling, Normalize, SelectElement, SelectEOSAndProject)
+from encoder2.models.multimodal_preprocessors import (AudioPreprocessor, IMUPreprocessor, PadIm2Video, PatchEmbedGeneric, RGBDTPreprocessor, SpatioTemporalPosEmbeddingHelper, ThermalPreprocessor)
+from encoder2.models.encoder_transformer import MultiheadAttention, SimpleTransformer
 
 ModalityType = SimpleNamespace(
     VISION="vision",
