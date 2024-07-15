@@ -48,11 +48,11 @@ class JOSIE(nn.Module):
 
         ##### ENCODER STUFF
         print(f"Initializing ImageBind encoder ...")
-        # imagebind_encoder_path = os.path.join(self.args["imagebind_encoder_path"])
-        self.imagebind_encoder, self.imagebind_encoder_output_dim = encoder.create_encoder() #, store_path=imagebind_encoder_path)
-        for name, param in self.imagebind_encoder.named_parameters():
+        # encoder_path = os.path.join(self.args["encoder_path"])
+        self.encoder, self.encoder_output_dim = encoder.create_encoder() #, store_path=encoder_path)
+        for name, param in self.encoder.named_parameters():
             param.requires_grad = False
-        self.imagebind_encoder.eval()
+        self.encoder.eval()
         print(f"... ImageBind encoder initialized.")
 
 
@@ -82,14 +82,13 @@ class JOSIE(nn.Module):
             self._add_audio_token()
             self._add_thermal_token()
             self._add_depth_token()
-            self._add_imu_token()
             self.reasoner.resize_token_embeddings(len(self.tokenizer))
             print("...  Spetial Tokens added to vocabulary")
 
 
         ##### INPUUT PROJECTOR STUFF
         print("Initializing input ImageBind Projection ...")
-        self.input_projetor = nn.Linear(self.imagebind_encoder_output_dim, self.reasoner.config.hidden_size)
+        self.input_projetor = nn.Linear(self.encoder_output_dim, self.reasoner.config.hidden_size)
         if self.args.freeze_input_proj:
             for param in self.input_projetor.parameters():
                 param.requires_grad = False
@@ -147,16 +146,12 @@ class JOSIE(nn.Module):
         self.tokenizer.add_tokens(["<|depth_start|>"])
         self.tokenizer.add_tokens(["<|depth_end|>"])
 
-    def _add_imu_token(self): # TODO Continue
-        self.tokenizer.add_tokens(["<|imu_start|>"])
-        self.tokenizer.add_tokens(["<|imu_end|>"])
-
     def encode_video(self, video_paths):
         print("Encoding Video")
         inputs = {ModalityType.VISION: data.load_and_transform_video_data(video_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
-            embeddings = self.imagebind_encoder(inputs)
+            embeddings = self.encoder(inputs)
             video_embeds = embeddings[ModalityType.VISION]
         outputs_input_projetor = self.input_projetor(video_embeds).unsqueeze(1)
         atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
@@ -167,7 +162,7 @@ class JOSIE(nn.Module):
         inputs = {ModalityType.AUDIO: data.load_and_transform_audio_data(audio_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
-            embeddings = self.imagebind_encoder(inputs)
+            embeddings = self.encoder(inputs)
             audio_embeds = embeddings[ModalityType.AUDIO]
         outputs_input_projetor = self.input_projetor(audio_embeds).unsqueeze(1)
         atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
@@ -178,7 +173,7 @@ class JOSIE(nn.Module):
         inputs = {ModalityType.VISION: data.load_and_transform_vision_data(image_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
-            embeddings = self.imagebind_encoder(inputs)
+            embeddings = self.encoder(inputs)
             image_embeds = embeddings[ModalityType.VISION]
         outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
         atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
@@ -189,7 +184,7 @@ class JOSIE(nn.Module):
         inputs = {ModalityType.THERMAL: data.load_and_transform_vision_data(thermal_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
-            embeddings = self.imagebind_encoder(inputs)
+            embeddings = self.encoder(inputs)
             image_embeds = embeddings[ModalityType.VITHERMALSION]
         outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
         atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
@@ -200,23 +195,12 @@ class JOSIE(nn.Module):
         inputs = {ModalityType.DEPTH: data.load_and_transform_vision_data(depth_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
-            embeddings = self.imagebind_encoder(inputs)
+            embeddings = self.encoder(inputs)
             image_embeds = embeddings[ModalityType.DEPTH]
         outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
         atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
         return outputs_input_projetor, atts_reasoner
-
-    def encode_imu(self, imu_paths):
-        print("Encoding Imu")
-        inputs = {ModalityType.IMU: data.load_and_transform_vision_data(imu_paths, device)}
-        inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
-        with torch.no_grad():
-            embeddings = self.imagebind_encoder(inputs)
-            image_embeds = embeddings[ModalityType.IMU]
-        outputs_input_projetor = self.input_projetor(image_embeds).unsqueeze(1)
-        atts_reasoner = torch.ones(outputs_input_projetor.size()[:-1], dtype=torch.long).to(device)
-        return outputs_input_projetor, atts_reasoner
-
+    
 
     def prompt_wrap_old(self, img_embeds, input_ids, target_ids, attention_mask):
         input_ids = input_ids.to(device)
@@ -431,6 +415,7 @@ class JOSIE(nn.Module):
                 bos_embeds = self.reasoner.model.embed_tokens(bos)
                 input_embeds.append(bos_embeds)
                 input_embeds.append(text_embeds)
+        print("Concatinating all created Embedddings.")
         inputs_embeds = torch.cat(input_embeds, dim=1)
         return inputs_embeds
 
@@ -504,7 +489,7 @@ class JOSIE(nn.Module):
         print("Generaded and Prepared the inputs:")
         print(input_embeds)
 
-        generated_ids, generated_hidden_states = self.generate_tokens_embeddings(inputs, input_embeds) # generated_hidden_states for further  transformation
+        generated_ids, generated_hidden_states = self.generate_tokens_embeddings(inputs, input_embeds) # generated_hidden_states for further transformations
         print("Generates IDs from the Reasoner:")
         print(generated_ids)
 

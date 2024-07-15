@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from encoder2.models.helpers import (EinOpsRearrange, SelectElement, RMSNorm)
 from encoder2.models.multimodal_preprocessors import (AudioPreprocessor, PadIm2Video, PatchEmbedGeneric, RGBDTPreprocessor, SpatioTemporalPosEmbeddingHelper, ThermalPreprocessor)
-from encoder2.models.encoder_transformer import MultiheadAttention, SimpleTransformer
+from encoder2.models.encoder_transformer import MultiheadAttention, EncoderTransformer
 
 ModalityType = SimpleNamespace(
     VISION="vision",
@@ -62,7 +62,7 @@ class Encoder(nn.Module):
 
         self.args = args
         self.modality_preprocessors = self._create_modality_preprocessors(self.args)
-        self.modality_trunks = self._create_modality_trunks(self.args)
+        self.modality_transformers = self._create_modality_transformers(self.args)
         self.modality_heads = self._create_modality_heads(self.args)
 
     def _create_modality_preprocessors(self, args):
@@ -154,9 +154,9 @@ class Encoder(nn.Module):
 
         return nn.ModuleDict(modality_preprocessors)
 
-    def _create_modality_trunks(self, args):
+    def _create_modality_transformers(self, args):
         def instantiate_trunk(embed_dim, num_blocks, num_heads, add_bias_kv, drop_path):
-            return SimpleTransformer(
+            return EncoderTransformer(
                 pre_transformer_layer=nn.Sequential(
                     RMSNorm(embed_dim, eps=1e-6),
                     EinOpsRearrange("b l d -> l b d")
@@ -177,29 +177,29 @@ class Encoder(nn.Module):
                 post_transformer_layer=EinOpsRearrange("l b d -> b l d"),
             )
 
-        modality_trunks = {}
-        modality_trunks[ModalityType.VISION] = instantiate_trunk(
+        modality_transformers = {}
+        modality_transformers[ModalityType.VISION] = instantiate_trunk(
             args.vision_embed_dim,
             args.vision_num_blocks,
             args.vision_num_heads,
             add_bias_kv=False,
             drop_path=0.0,
         )
-        modality_trunks[ModalityType.AUDIO] = instantiate_trunk(
+        modality_transformers[ModalityType.AUDIO] = instantiate_trunk(
             args.audio_embed_dim,
             args.audio_num_blocks,
             args.audio_num_heads,
             add_bias_kv=True,
             drop_path=args.audio_drop_path,
         )
-        modality_trunks[ModalityType.DEPTH] = instantiate_trunk(
+        modality_transformers[ModalityType.DEPTH] = instantiate_trunk(
             args.depth_embed_dim,
             args.depth_num_blocks,
             args.depth_num_heads,
             add_bias_kv=True,
             drop_path=args.depth_drop_path,
         )
-        modality_trunks[ModalityType.THERMAL] = instantiate_trunk(
+        modality_transformers[ModalityType.THERMAL] = instantiate_trunk(
             args.thermal_embed_dim,
             args.thermal_num_blocks,
             args.thermal_num_heads,
@@ -207,7 +207,7 @@ class Encoder(nn.Module):
             drop_path=args.thermal_drop_path,
         )
 
-        return nn.ModuleDict(modality_trunks)
+        return nn.ModuleDict(modality_transformers)
 
     def _create_modality_heads(self, args):
         modality_heads = {}
@@ -254,7 +254,7 @@ class Encoder(nn.Module):
                 modality_value = self.modality_preprocessors[modality_key](**{modality_key: modality_value})
                 trunk_inputs = modality_value["trunk"]
                 head_inputs = modality_value["head"]
-                modality_value = self.modality_trunks[modality_key](**trunk_inputs)
+                modality_value = self.modality_transformers[modality_key](**trunk_inputs)
                 modality_value = self.modality_heads[modality_key](modality_value, **head_inputs)
 
                 if reduce_list:

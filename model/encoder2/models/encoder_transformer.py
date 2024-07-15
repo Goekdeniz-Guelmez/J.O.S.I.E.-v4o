@@ -61,7 +61,7 @@ class MultiheadAttention(nn.MultiheadAttention):
         return super().forward(x, x, x, need_weights=False, attn_mask=attn_mask)[0]
 
 
-class Block(nn.Module):
+class EncoderTransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -94,7 +94,7 @@ class Block(nn.Module):
     
 
 
-class SimpleTransformer(nn.Module):
+class EncoderTransformer(nn.Module):
     def __init__(
         self,
         attn_target: Callable,
@@ -119,7 +119,7 @@ class SimpleTransformer(nn.Module):
             raise ValueError(f"Unknown drop_path_type: {drop_path_type}")
 
         self.blocks = nn.ModuleList([
-            Block(
+            EncoderTransformerBlock(
                 dim=embed_dim,
                 attn_target=attn_target,
                 drop_path=dpr[i],

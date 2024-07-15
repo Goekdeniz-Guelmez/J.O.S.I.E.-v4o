@@ -3,7 +3,7 @@ import torch
 from josie import JOSIE
 
 class Args():
-    imagebind_encoder_path = "/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/models/imagebind_huge.pth"
+    # imagebind_encoder_path = "/Users/gokdenizgulmez/Desktop/J.O.S.I.E.-v4o/models/imagebind_huge.pth"
     reasoner_path = "Qwen/Qwen2-0.5B-Instruct"
     freeze_lm = True
     freeze_input_proj = False
@@ -18,7 +18,7 @@ class Args():
 model = JOSIE(Args())
 
 print("Loading model...")
-# model.load_state_dict(torch.load("/Users/gokdenizgulmez/Desktop/first_working_creation.pth"))
+model.load_state_dict(torch.load("/Users/gokdenizgulmez/Desktop/first_working_creation_with_custom_encoders.pth"))
 model.eval()
 print("... Model loaded")
 
@@ -61,7 +61,7 @@ output_tokens = model.generate(inputs)
 print(output_tokens)
 
 
-# torch.save(model.state_dict(), "/Users/gokdenizgulmez/Desktop/first_working_creation.pth")
+# torch.save(model.state_dict(), "/Users/gokdenizgulmez/Desktop/first_working_creation_with_custom_encoders.pth")
 
 # print("Model's state_dict:")
 # for param_tensor in model.state_dict():
