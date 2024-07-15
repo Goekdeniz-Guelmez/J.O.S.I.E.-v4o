@@ -1,6 +1,10 @@
-from encoder import data
-from encoder.models import imagebind_model
-from encoder.models.imagebind_model import ModalityType
+# from encoder import data
+# from encoder.models import imagebind_model
+# from encoder.models.imagebind_model import ModalityType
+
+from encoder2 import data
+from encoder2.models import encoder
+from encoder2.models.encoder import ModalityType
 
 import torch
 
@@ -11,13 +15,14 @@ audio_paths=[".assets/dog_audio.wav", ".assets/car_audio.wav", ".assets/bird_aud
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 # Instantiate model
-model, dim = imagebind_model.imagebind_huge(pretrained=True)
+# model, dim = imagebind_model.imagebind_huge(pretrained=True)
+model, dim = encoder.create_encoder()
 model.eval()
 model.to(device)
 
 # Load data
 inputs = {
-    ModalityType.TEXT: data.load_and_transform_text(text_list, device),
+    # ModalityType.TEXT: data.load_and_transform_text(text_list, device),
     ModalityType.VISION: data.load_and_transform_vision_data(image_paths, device),
     ModalityType.AUDIO: data.load_and_transform_audio_data(audio_paths, device),
 }
@@ -25,9 +30,13 @@ inputs = {
 with torch.no_grad():
     embeddings = model(inputs)
 
-print("Vision x Text: ", torch.softmax(embeddings[ModalityType.VISION] @ embeddings[ModalityType.TEXT].T, dim=-1))
-print("Audio x Text: ", torch.softmax(embeddings[ModalityType.AUDIO] @ embeddings[ModalityType.TEXT].T, dim=-1))
-print("Vision x Audio: ", torch.softmax(embeddings[ModalityType.VISION] @ embeddings[ModalityType.AUDIO].T, dim=-1))
+# print("Vision x Text: ", torch.softmax(embeddings[ModalityType.VISION] @ embeddings[ModalityType.TEXT].T, dim=-1))
+# print("Audio x Text: ", torch.softmax(embeddings[ModalityType.AUDIO] @ embeddings[ModalityType.TEXT].T, dim=-1))
+# print("Vision x Audio: ", torch.softmax(embeddings[ModalityType.VISION] @ embeddings[ModalityType.AUDIO].T, dim=-1))
+
+print("Vision x Text: ", torch.softmax(embeddings[ModalityType.VISION], dim=-1))
+print("Audio x Text: ", torch.softmax(embeddings[ModalityType.AUDIO], dim=-1))
+print("Vision x Audio: ", torch.softmax(embeddings[ModalityType.VISION], dim=-1))
 
 """
 Vision x Text:  tensor([

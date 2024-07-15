@@ -16,12 +16,11 @@ import torch
 import torch.nn as nn
 
 from encoder.models.helpers import (EinOpsRearrange, LearnableLogitScaling, Normalize, SelectElement, SelectEOSAndProject)
-from encoder.models.multimodal_preprocessors import (AudioPreprocessor, IMUPreprocessor, PadIm2Video, PatchEmbedGeneric, RGBDTPreprocessor, SpatioTemporalPosEmbeddingHelper, TextPreprocessor, ThermalPreprocessor)
+from encoder.models.multimodal_preprocessors import (AudioPreprocessor, IMUPreprocessor, PadIm2Video, PatchEmbedGeneric, RGBDTPreprocessor, SpatioTemporalPosEmbeddingHelper, ThermalPreprocessor)
 from encoder.models.transformer import MultiheadAttention, SimpleTransformer
 
 ModalityType = SimpleNamespace(
     VISION="vision",
-    TEXT="text",
     AUDIO="audio",
     THERMAL="thermal",
     DEPTH="depth",
@@ -48,10 +47,6 @@ class EncoderModelArgs():
     audio_drop_path: float = 0.1
     audio_kernel_size: int = 16
     audio_stride: int = 10
-
-    text_embed_dim: int = 1024
-    text_num_blocks: int = 24
-    text_num_heads: int = 16
 
     depth_embed_dim: int = 384
     depth_kernel_size: int = 16
@@ -80,7 +75,7 @@ class EncoderModelArgs():
 
 
 
-class ImageBindModel(nn.Module):
+class Encoder(nn.Module):
     def __init__(self, args: EncoderModelArgs):
         super().__init__()
 
@@ -113,13 +108,6 @@ class ImageBindModel(nn.Module):
             pos_embed_fn=partial(SpatioTemporalPosEmbeddingHelper, learnable=True),
             rgbt_stem=rgbt_stem,
             depth_stem=None,
-        )
-
-        text_preprocessor = TextPreprocessor(
-            context_length=77,
-            vocab_size=49408,
-            embed_dim=args.text_embed_dim,
-            causal_masking=True,
         )
 
         audio_stem = PatchEmbedGeneric(
@@ -203,7 +191,6 @@ class ImageBindModel(nn.Module):
 
         modality_preprocessors = {
             ModalityType.VISION: rgbt_preprocessor,
-            ModalityType.TEXT: text_preprocessor,
             ModalityType.AUDIO: audio_preprocessor,
             ModalityType.DEPTH: depth_preprocessor,
             ModalityType.THERMAL: thermal_preprocessor,
@@ -243,14 +230,6 @@ class ImageBindModel(nn.Module):
             args.vision_num_blocks,
             args.vision_num_heads,
             pre_transformer_ln=True,
-            add_bias_kv=False,
-            drop_path=0.0,
-        )
-        modality_trunks[ModalityType.TEXT] = instantiate_trunk(
-            args.text_embed_dim,
-            args.text_num_blocks,
-            args.text_num_heads,
-            pre_transformer_ln=False,
             add_bias_kv=False,
             drop_path=0.0,
         )
@@ -298,13 +277,6 @@ class ImageBindModel(nn.Module):
             nn.Linear(args.vision_embed_dim, args.out_embed_dim, bias=False),
         )
 
-        modality_heads[ModalityType.TEXT] = SelectEOSAndProject(
-            proj=nn.Sequential(
-                nn.LayerNorm(normalized_shape=args.text_embed_dim, eps=1e-6),
-                nn.Linear(args.text_embed_dim, args.out_embed_dim, bias=False),
-            )
-        )
-
         modality_heads[ModalityType.AUDIO] = nn.Sequential(
             nn.LayerNorm(normalized_shape=args.audio_embed_dim, eps=1e-6),
             SelectElement(index=0),
@@ -334,7 +306,6 @@ class ImageBindModel(nn.Module):
     def _create_modality_postprocessors(self, out_embed_dim):
         modality_postprocessors = {}
         modality_postprocessors[ModalityType.VISION] = Normalize(dim=-1)
-        modality_postprocessors[ModalityType.TEXT] = nn.Sequential(Normalize(dim=-1), LearnableLogitScaling(learnable=True))
         modality_postprocessors[ModalityType.AUDIO] = nn.Sequential(Normalize(dim=-1), LearnableLogitScaling(logit_scale_init=20.0, learnable=False))
         modality_postprocessors[ModalityType.DEPTH] = nn.Sequential(Normalize(dim=-1), LearnableLogitScaling(logit_scale_init=5.0, learnable=False))
         modality_postprocessors[ModalityType.THERMAL] = nn.Sequential(Normalize(dim=-1), LearnableLogitScaling(logit_scale_init=10.0, learnable=False))
@@ -366,14 +337,6 @@ class ImageBindModel(nn.Module):
         return outputs
 
 
-def imagebind_huge(pretrained=False, store_path=r'/Users/gokdenizgulmez/Desktop/checkpoints'):
-    encoder = ImageBindModel(EncoderModelArgs())
-    if pretrained:
-        if not os.path.exists("{}/imagebind_huge.pth".format(store_path)):
-            print("Downloading imagebind weights to {}/imagebind_huge.pth ...".format(store_path))
-            os.makedirs(store_path, exist_ok=True)
-            torch.hub.download_url_to_file("https://dl.fbaipublicfiles.com/imagebind/imagebind_huge.pth", "{}/imagebind_huge.pth".format(store_path), progress=True,)
-
-        encoder.load_state_dict(torch.load("{}/imagebind_huge.pth".format(store_path)))
-
+def create_encoder():
+    encoder = Encoder(EncoderModelArgs())
     return encoder, EncoderModelArgs.out_embed_dim
