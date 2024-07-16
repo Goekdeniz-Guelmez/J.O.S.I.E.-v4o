@@ -147,7 +147,6 @@ class JOSIE(nn.Module):
         self.tokenizer.add_tokens(["<|depth_end|>"])
 
     def encode_video(self, video_paths):
-        print("Encoding Video")
         inputs = {ModalityType.VISION: data.load_and_transform_video_data(video_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
@@ -158,7 +157,6 @@ class JOSIE(nn.Module):
         return outputs_input_projetor, atts_reasoner
 
     def encode_audio(self, audio_paths):
-        print("Encoding Audio")
         inputs = {ModalityType.AUDIO: data.load_and_transform_audio_data(audio_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
@@ -169,7 +167,6 @@ class JOSIE(nn.Module):
         return outputs_input_projetor, atts_reasoner
 
     def encode_image(self, image_paths):
-        print("Encoding Image")
         inputs = {ModalityType.VISION: data.load_and_transform_vision_data(image_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
@@ -180,7 +177,6 @@ class JOSIE(nn.Module):
         return outputs_input_projetor, atts_reasoner
 
     def encode_themal_image(self, thermal_paths):
-        print("Encoding thermal Image")
         inputs = {ModalityType.THERMAL: data.load_and_transform_vision_data(thermal_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
@@ -191,7 +187,6 @@ class JOSIE(nn.Module):
         return outputs_input_projetor, atts_reasoner
 
     def encode_depth_image(self, depth_paths):
-        print("Encoding depth Image")
         inputs = {ModalityType.DEPTH: data.load_and_transform_vision_data(depth_paths, device)}
         inputs = {key: inputs[key].to(self.reasoner.dtype) for key in inputs}
         with torch.no_grad():
@@ -215,7 +210,6 @@ class JOSIE(nn.Module):
             p_after_embeds = self.reasoner.model.model.embed_tokens(input_ids).expand(batch_size, -1, -1)
             bos_embeds = self.reasoner.model.model.embed_tokens(bos)
         if img_embeds is not None:
-            print("Recieved Image")
             p_before = "<|im_end|>\n<|im_start|>user\n<|image_start|>"
             p_before_tokens = self.tokenizer(p_before, return_tensors="pt", add_special_tokens=False).to(device)
             if self.args['freeze_lm']:
@@ -391,8 +385,6 @@ class JOSIE(nn.Module):
         if 'depth_paths' in inputs:
             text += ' <|depth_start|> '
 
-        print("text prompt: ", text)
-
         split_text = re.split(r'(<\|image_start\|>|<\|audio_start\|>|<\|video_start\|>)', text)
         for st in split_text:
             if st.startswith('<|image_start|>'):
@@ -400,13 +392,10 @@ class JOSIE(nn.Module):
             elif st.startswith('<|audio_start|>'):
                 input_embeds.append(self._prepare_audio_embed(inputs, batch_size))
             elif st.startswith('<|video_start|>'):
-                print("recieved video")
                 input_embeds.append(self._prepare_video_embed(inputs, batch_size))
             elif st.startswith('<|thermal_start|>'):
-                print("recieved thermal")
                 input_embeds.append(self._prepare_thermal_embed(inputs, batch_size))
             elif st.startswith('<|depth_start|>'):
-                print("recieved depth")
                 input_embeds.append(self._prepare_depth_embed(inputs, batch_size))
             else:
                 text_tokens = self.tokenizer(st, add_special_tokens=False, return_tensors='pt').to(device)
@@ -415,7 +404,6 @@ class JOSIE(nn.Module):
                 bos_embeds = self.reasoner.model.embed_tokens(bos)
                 input_embeds.append(bos_embeds)
                 input_embeds.append(text_embeds)
-        print("Concatinating all created Embedddings.")
         inputs_embeds = torch.cat(input_embeds, dim=1)
         return inputs_embeds
 
@@ -444,6 +432,38 @@ class JOSIE(nn.Module):
         )
 
         return outputs.sequences, outputs.hidden_states
+    
+    def stream_generate_tokens_embeddings(self, inputs, input_embeds, temperature: float = 0.0, top_p: float = 1.0):
+        stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=inputs['stops_id'], encounters=1)])
+
+        outputs = self.reasoner.generate(
+            inputs_embeds=input_embeds,
+            max_new_tokens=inputs['max_tgt_len'],
+            top_p=inputs['top_p'],
+            temperature=inputs['temperature'],
+            # repeat_pen,
+            do_sample=True,
+            use_cache=True,
+            stopping_criteria=stopping_criteria,
+            output_hidden_states=True,
+            return_dict_in_generate=True,
+            output_attentions=True,
+            do_stream=True
+        )
+
+        for output in generator:
+            token = output["sequences"]
+            hidden_state = output["hidden_states"]
+            attention = output["attentions"]
+
+            # Decode token and stream the outputs
+            word = self.tokenizer.decode(token, skip_special_tokens=True)
+            print(f'Token: {word}', flush=True)
+
+            # Optionally, process hidden states and attentions
+            # Here we are just printing them for demonstration
+            print(f'Hidden States: {hidden_state}', flush=True)
+            print(f'Attentions: {attention}', flush=True)
 
     def generate(self, inputs):
         """
@@ -487,11 +507,9 @@ class JOSIE(nn.Module):
 
         input_embeds = self.prepare_generation_embedding(inputs)
         print("Generaded and Prepared the inputs:")
-        print(input_embeds)
 
         generated_ids, generated_hidden_states = self.generate_tokens_embeddings(inputs, input_embeds) # generated_hidden_states for further transformations
         print("Generates IDs from the Reasoner:")
-        print(generated_ids)
 
         output = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
         print("Tokenized the Outputs")
